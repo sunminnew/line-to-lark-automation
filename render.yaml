@@ -1,0 +1,37 @@
+# render.yaml — Blueprint for Render.com one-click deploy
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: line-to-lark-automation
+    runtime: node
+    region: singapore   # closest to Bangkok; alternatives: oregon, frankfurt
+    plan: free          # upgrade to starter ($7/mo) to avoid sleep-on-idle
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000        # Render injects $PORT; this is its default value
+      - key: BUSINESS_HOUR_START
+        value: "9"
+      - key: BUSINESS_HOUR_END
+        value: "18"
+      - key: OPENAI_MODEL
+        value: gpt-4o
+      # ── Secrets: fill these in the Render Dashboard → Environment tab ──
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false         # "sync: false" = Render will prompt you to fill it
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LARK_APP_ID
+        sync: false
+      - key: LARK_APP_SECRET
+        sync: false
+      - key: LARK_ASSIGNEE_USER_ID
+        sync: false
