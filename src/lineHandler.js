@@ -1,54 +1,68 @@
 /**
  * lineHandler.js
- * Handles LINE Webhook events and the OOO auto-reply.
- *
- * LINE Docs:
- *   Webhook events  → https://developers.line.biz/en/reference/messaging-api/#webhook-event-objects
- *   Reply message   → https://developers.line.biz/en/reference/messaging-api/#send-reply-message
+ * Handles LINE Webhook events, OOO auto-reply, and Thai→Korean translation.
  */
 
-const axios = require('axios');
+const axios  = require('axios');
 const crypto = require('crypto');
+const { OpenAI } = require('openai');
 
-const LINE_API_BASE   = 'https://api.line.me/v2/bot';
-const ACCESS_TOKEN    = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const CHANNEL_SECRET  = process.env.LINE_CHANNEL_SECRET;
+const LINE_API_BASE  = 'https://api.line.me/v2/bot';
+const ACCESS_TOKEN   = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const OOO_MESSAGE =
   'สวัสดีค่ะ/ครับ ขณะนี้อยู่นอกเวลาทำการ (09.00-18.00 น.) ' +
   'ทางทีมงานได้รับข้อความของท่านแล้ว และจะรีบติดต่อกลับทันทีในเวลาทำการ ' +
   'ขอบพระคุณที่ไว้วางใจค่ะ/ครับ';
 
-// ── Signature verification ────────────────────────────────────────────────────
+// Thai Unicode block: U+0E00-U+0E7F
+const THAI_REGEX = /[฀-๿]/;
 
-/**
- * Validates the X-Line-Signature header to prevent spoofed requests.
- * @param {Buffer} rawBody
- * @param {string} signature  — value of X-Line-Signature header
- * @returns {boolean}
- */
+// Signature verification
+
 function verifySignature(rawBody, signature) {
   const hmac = crypto.createHmac('SHA256', CHANNEL_SECRET);
   hmac.update(rawBody);
-  const digest = hmac.digest('base64');
-  return digest === signature;
+  return hmac.digest('base64') === signature;
 }
 
-// ── Reply API ─────────────────────────────────────────────────────────────────
+// Translation
 
-/**
- * Sends a text reply via the LINE Reply Message API.
- * @param {string} replyToken  — one-time token from the webhook event
- * @param {string} text
- */
-async function replyOOO(replyToken, text = OOO_MESSAGE) {
+async function translateToKorean(text) {
+  if (!THAI_REGEX.test(text)) return null;
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a professional Thai-to-Korean translator. ' +
+            'Translate the Thai text below to natural Korean. ' +
+            'Reply with ONLY the Korean translation — no explanations, no romanization.',
+        },
+        { role: 'user', content: text },
+      ],
+      temperature: 0.1,
+      max_tokens: 500,
+    });
+    return res.choices[0].message.content.trim();
+  } catch (err) {
+    console.error('[Translate] GPT error:', err.message);
+    return null;
+  }
+}
+
+// Reply API
+
+async function replyMessages(replyToken, messages) {
   try {
     await axios.post(
       `${LINE_API_BASE}/message/reply`,
-      {
-        replyToken,
-        messages: [{ type: 'text', text }],
-      },
+      { replyToken, messages },
       {
         headers: {
           'Content-Type': 'application/json',
@@ -56,35 +70,25 @@ async function replyOOO(replyToken, text = OOO_MESSAGE) {
         },
       }
     );
-    console.log('[LINE] OOO reply sent.');
   } catch (err) {
     console.error('[LINE] Reply failed:', err.response?.data ?? err.message);
   }
 }
 
-// ── Event parser ──────────────────────────────────────────────────────────────
+async function replyOOO(replyToken) {
+  await replyMessages(replyToken, [{ type: 'text', text: OOO_MESSAGE }]);
+  console.log('[LINE] OOO reply sent.');
+}
 
-/**
- * Extracts the sender display name from a LINE message event.
- * In a group, the name lives inside event.source.userId — you need the
- * Profile API to resolve it, OR it is embedded in event.message if the
- * LINE Official Account is in the group with "Get Member Profile" enabled.
- *
- * Here we call the Group Member Profile endpoint.
- * @param {object} event  — LINE webhook event object
- * @returns {Promise<string>}
- */
+// Event parser
+
 async function getSenderName(event) {
   try {
     const { userId, groupId, roomId } = event.source;
     let url;
-    if (groupId) {
-      url = `${LINE_API_BASE}/group/${groupId}/member/${userId}`;
-    } else if (roomId) {
-      url = `${LINE_API_BASE}/room/${roomId}/member/${userId}`;
-    } else {
-      url = `${LINE_API_BASE}/profile/${userId}`;
-    }
+    if (groupId)     url = `${LINE_API_BASE}/group/${groupId}/member/${userId}`;
+    else if (roomId) url = `${LINE_API_BASE}/room/${roomId}/member/${userId}`;
+    else             url = `${LINE_API_BASE}/profile/${userId}`;
     const res = await axios.get(url, {
       headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
     });
@@ -94,4 +98,11 @@ async function getSenderName(event) {
   }
 }
 
-module.exports = { verifySignature, replyOOO, getSenderName, OOO_MESSAGE };
+module.exports = {
+  verifySignature,
+  translateToKorean,
+  replyMessages,
+  replyOOO,
+  getSenderName,
+  OOO_MESSAGE,
+};
