@@ -1,7 +1,7 @@
 /**
  * lineHandler.js
  * Handles LINE Webhook events, OOO auto-reply, and Thai→Korean translation.
- * Uses Google Gemini API (free tier).
+ * Uses Groq API (free tier) with llama model.
  */
 
 const axios = require('axios');
@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const LINE_API_BASE = 'https://api.line.me/v2/bot';
 const ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 const OOO_MESSAGE =
   'สวัสดีค่า/ครับ ขณะนี้อยู่นอกเวลาทำการ (09.00-18.00 น.) ' +
@@ -29,18 +29,21 @@ async function translateToKorean(text) {
   if (!THAI_REGEX.test(text)) return null;
   try {
     const res = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      'https://api.groq.com/openai/v1/chat/completions',
       {
-        contents: [{ parts: [{ text: `You are a professional Thai-to-Korean translator. Translate the following Thai text to natural Korean. Reply with ONLY the Korean translation.
-
-${text}` }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: 'You are a professional Thai-to-Korean translator. Translate the Thai text to natural Korean. Reply with ONLY the Korean translation.' },
+          { role: 'user', content: text },
+        ],
+        temperature: 0.1,
+        max_tokens: 500,
       },
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` } }
     );
-    return res.data.candidates[0].content.parts[0].text.trim();
+    return res.data.choices[0].message.content.trim();
   } catch (err) {
-    console.error('[Translate] Gemini error:', err.response?.data ?? err.message);
+    console.error('[Translate] Groq error:', err.response?.data ?? err.message);
     return null;
   }
 }
