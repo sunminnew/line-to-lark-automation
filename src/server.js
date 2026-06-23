@@ -80,6 +80,17 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// ── Setup webhook (one-time, registers LINE webhook URL) ──────────────────────
+app.get('/setup-webhook', async (_req, res) => {
+  const webhookUrl = 'https://line-to-lark-automation.onrender.com/webhook';
+  const r = await require('axios').put(
+    'https://api.line.me/v2/bot/channel/webhook/endpoint',
+    { webhookEndpointUrl: webhookUrl },
+    { headers: { Authorization: 'Bearer ' + process.env.LINE_CHANNEL_ACCESS_TOKEN } }
+  );
+  res.json({ set: webhookUrl, lineResponse: r.data });
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('\n Server running on port ' + PORT);
