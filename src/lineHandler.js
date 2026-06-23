@@ -1,27 +1,23 @@
 /**
  * lineHandler.js
  * Handles LINE Webhook events, OOO auto-reply, and Thai→Korean translation.
+ * Uses Google Gemini API (free tier).
  */
 
-const axios  = require('axios');
+const axios = require('axios');
 const crypto = require('crypto');
-const { OpenAI } = require('openai');
 
-const LINE_API_BASE  = 'https://api.line.me/v2/bot';
-const ACCESS_TOKEN   = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const LINE_API_BASE = 'https://api.line.me/v2/bot';
+const ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const OOO_MESSAGE =
-  'สวัสดีค่ะ/ครับ ขณะนี้อยู่นอกเวลาทำการ (09.00-18.00 น.) ' +
+  'สวัสดีค่า/ครับ ขณะนี้อยู่นอกเวลาทำการ (09.00-18.00 น.) ' +
   'ทางทีมงานได้รับข้อความของท่านแล้ว และจะรีบติดต่อกลับทันทีในเวลาทำการ ' +
-  'ขอบพระคุณที่ไว้วางใจค่ะ/ครับ';
+  'ขอบพระคุณที่ไว้วางใจค่า/ครับ';
 
-// Thai Unicode block: U+0E00-U+0E7F
 const THAI_REGEX = /[฀-๿]/;
-
-// Signature verification
 
 function verifySignature(rawBody, signature) {
   const hmac = crypto.createHmac('SHA256', CHANNEL_SECRET);
@@ -29,46 +25,32 @@ function verifySignature(rawBody, signature) {
   return hmac.digest('base64') === signature;
 }
 
-// Translation
-
 async function translateToKorean(text) {
   if (!THAI_REGEX.test(text)) return null;
   try {
-    const res = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a professional Thai-to-Korean translator. ' +
-            'Translate the Thai text below to natural Korean. ' +
-            'Reply with ONLY the Korean translation — no explanations, no romanization.',
-        },
-        { role: 'user', content: text },
-      ],
-      temperature: 0.1,
-      max_tokens: 500,
-    });
-    return res.choices[0].message.content.trim();
+    const res = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        contents: [{ parts: [{ text: `You are a professional Thai-to-Korean translator. Translate the following Thai text to natural Korean. Reply with ONLY the Korean translation.
+
+${text}` }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
+      },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    return res.data.candidates[0].content.parts[0].text.trim();
   } catch (err) {
-    console.error('[Translate] GPT error:', err.message);
+    console.error('[Translate] Gemini error:', err.response?.data ?? err.message);
     return null;
   }
 }
-
-// Reply API
 
 async function replyMessages(replyToken, messages) {
   try {
     await axios.post(
       `${LINE_API_BASE}/message/reply`,
       { replyToken, messages },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${ACCESS_TOKEN}`,
-        },
-      }
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ACCESS_TOKEN}` } }
     );
   } catch (err) {
     console.error('[LINE] Reply failed:', err.response?.data ?? err.message);
@@ -80,29 +62,18 @@ async function replyOOO(replyToken) {
   console.log('[LINE] OOO reply sent.');
 }
 
-// Event parser
-
 async function getSenderName(event) {
   try {
     const { userId, groupId, roomId } = event.source;
     let url;
-    if (groupId)     url = `${LINE_API_BASE}/group/${groupId}/member/${userId}`;
+    if (groupId) url = `${LINE_API_BASE}/group/${groupId}/member/${userId}`;
     else if (roomId) url = `${LINE_API_BASE}/room/${roomId}/member/${userId}`;
-    else             url = `${LINE_API_BASE}/profile/${userId}`;
-    const res = await axios.get(url, {
-      headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
-    });
+    else url = `${LINE_API_BASE}/profile/${userId}`;
+    const res = await axios.get(url, { headers: { Authorization: `Bearer ${ACCESS_TOKEN}` } });
     return res.data.displayName ?? userId;
   } catch {
     return event.source.userId ?? 'Unknown';
   }
 }
 
-module.exports = {
-  verifySignature,
-  translateToKorean,
-  replyMessages,
-  replyOOO,
-  getSenderName,
-  OOO_MESSAGE,
-};
+module.exports = { verifySignature, translateToKorean, replyMessages, replyOOO, getSenderName, OOO_MESSAGE };
