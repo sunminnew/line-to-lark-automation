@@ -29,7 +29,7 @@ async function translateToKorean(text) {
   if (!THAI_REGEX.test(text)) return null;
   try {
     const res = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         contents: [{ parts: [{ text: `You are a professional Thai-to-Korean translator. Translate the following Thai text to natural Korean. Reply with ONLY the Korean translation.
 
