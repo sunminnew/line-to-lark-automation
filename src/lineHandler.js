@@ -1,9 +1,8 @@
 /**
  * lineHandler.js
- * Handles LINE Webhook events, OOO auto-reply, and Thai→Korean translation.
  * Uses Groq API (free tier) with llama model.
+ * Supports bidirectional translation: Thai→Korean and Korean→Thai.
  */
-
 const axios = require('axios');
 const crypto = require('crypto');
 
@@ -17,7 +16,8 @@ const OOO_MESSAGE =
   'ทางทีมงานได้รับข้อความของท่านแล้ว และจะรีบติดต่อกลับทันทีในเวลาทำการ ' +
   'ขอบพระคุณที่ไว้วางใจค่า/ครับ';
 
-const THAI_REGEX = /[฀-๿]/;
+const THAI_REGEX   = /[฀-๿]/;
+const KOREAN_REGEX = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
 
 function verifySignature(rawBody, signature) {
   const hmac = crypto.createHmac('SHA256', CHANNEL_SECRET);
@@ -25,15 +25,14 @@ function verifySignature(rawBody, signature) {
   return hmac.digest('base64') === signature;
 }
 
-async function translateToKorean(text) {
-  if (!THAI_REGEX.test(text)) return null;
+async function groqTranslate(text, systemPrompt) {
   try {
     const res = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
       {
         model: 'llama-3.1-8b-instant',
         messages: [
-          { role: 'system', content: 'You are a professional Thai-to-Korean translator. Translate the Thai text to natural Korean. Reply with ONLY the Korean translation.' },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: text },
         ],
         temperature: 0.1,
@@ -46,6 +45,24 @@ async function translateToKorean(text) {
     console.error('[Translate] Groq error:', err.response?.data ?? err.message);
     return null;
   }
+}
+
+async function translate(text) {
+  if (THAI_REGEX.test(text)) {
+    console.log('[Translate] Thai detected → translating to Korean');
+    return groqTranslate(
+      text,
+      'You are a professional Thai-to-Korean translator. Translate the Thai text to natural Korean. Reply with ONLY the Korean translation.'
+    );
+  }
+  if (KOREAN_REGEX.test(text)) {
+    console.log('[Translate] Korean detected → translating to Thai');
+    return groqTranslate(
+      text,
+      'You are a professional Korean-to-Thai translator. Translate the Korean text to natural Thai. Reply with ONLY the Thai translation.'
+    );
+  }
+  return null;
 }
 
 async function replyMessages(replyToken, messages) {
@@ -79,4 +96,4 @@ async function getSenderName(event) {
   }
 }
 
-module.exports = { verifySignature, translateToKorean, replyMessages, replyOOO, getSenderName, OOO_MESSAGE };
+module.exports = { verifySignature, translate, translateToKorean: translate, replyMessages, replyOOO, getSenderName, OOO_MESSAGE };
