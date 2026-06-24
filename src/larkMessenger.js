@@ -44,7 +44,7 @@ async function getTenantToken() {
 
 /**
  * Send a plain-text message to the configured Lark group chat.
- * @param {string} text   Message body
+ * @param {string} text  Message body
  * @returns {Promise<string|null>}  Message ID or null on failure
  */
 async function sendToLarkGroup(text) {
@@ -95,7 +95,13 @@ async function listBotChats() {
     const token = await getTenantToken();
     const res = await axios.get(`${LARK_BASE}/im/v1/chats`, {
       headers: { Authorization: `Bearer ${token}` },
+      params: { page_size: 100 },
     });
+    console.log('[LarkMsg] /im/v1/chats raw response:', JSON.stringify(res.data));
+    if (res.data.code !== 0) {
+      console.error('[LarkMsg] API error:', res.data);
+      return [];
+    }
     return res.data.data?.items ?? [];
   } catch (err) {
     console.error('[LarkMsg] List chats failed:', err.response?.data ?? err.message);
