@@ -1,29 +1,18 @@
 /**
  * messageStore.js
  * In-memory buffer for LINE messages received during business hours.
- * Each entry: { timestamp: ISO string, senderName: string, text: string }
- *
- * For production with multiple workers, swap this for Redis:
- *   LPUSH  line:messages  JSON.stringify(entry)
- *   LRANGE line:messages  0 -1  (fetch)
- *   DEL    line:messages        (clear)
+ * Stores messages both globally (for hourly cron) and per LINE group (for keyword trigger).
  */
 
 const store = [];
+const groupStore = {};
+const MAX_GROUP_MESSAGES = 200;
 
-/**
- * Append a message to the buffer.
- * @param {{ timestamp: string, senderName: string, text: string }} msg
- */
 function addMessage(msg) {
   store.push(msg);
   console.log(`[Store] +1 message (total: ${store.length}) from "${msg.senderName}"`);
 }
 
-/**
- * Return a shallow copy of all buffered messages then clear the buffer.
- * @returns {Array}
- */
 function flushMessages() {
   const snapshot = [...store];
   store.length = 0;
@@ -31,12 +20,21 @@ function flushMessages() {
   return snapshot;
 }
 
-/**
- * Peek without clearing (useful for debugging).
- * @returns {Array}
- */
-function peekMessages() {
-  return [...store];
+function peekMessages() { return [...store]; }
+
+function addGroupMessage(groupId, msg) {
+  if (!groupStore[groupId]) groupStore[groupId] = [];
+  groupStore[groupId].push(msg);
+  if (groupStore[groupId].length > MAX_GROUP_MESSAGES) groupStore[groupId].shift();
 }
 
-module.exports = { addMessage, flushMessages, peekMessages };
+function flushGroupMessages(groupId) {
+  const msgs = groupStore[groupId] ?? [];
+  groupStore[groupId] = [];
+  console.log(`[Store] Flushed ${msgs.length} message(s) from group ${groupId}.`);
+  return msgs;
+}
+
+function peekGroupMessages(groupId) { return [...(groupStore[groupId] ?? [])]; }
+
+module.exports = { addMessage, flushMessages, peekMessages, addGroupMessage, flushGroupMessages, peekGroupMessages };
