@@ -1,7 +1,6 @@
 /**
  * lineHandler.js
- * Uses Groq API (free tier) with llama model.
- * Supports bidirectional translation: Thai→Korean and Korean→Thai.
+ * Bidirectional translation: Thai↔Korean via Groq API (free tier).
  */
 const axios = require('axios');
 const crypto = require('crypto');
@@ -16,7 +15,7 @@ const OOO_MESSAGE =
   'ทางทีมงานได้รับข้อความของท่านแล้ว และจะรีบติดต่อกลับทันทีในเวลาทำการ ' +
   'ขอบพระคุณที่ไว้วางใจค่า/ครับ';
 
-const THAI_REGEX   = /[฀-๿]/;
+const THAI_REGEX   = /[\u0E00-\u0E7F]/;
 const KOREAN_REGEX = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
 
 function verifySignature(rawBody, signature) {
@@ -30,7 +29,7 @@ async function groqTranslate(text, systemPrompt) {
     const res = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
       {
-        model: 'llama-3.1-8b-instant',
+        model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: text },
@@ -52,14 +51,14 @@ async function translate(text) {
     console.log('[Translate] Thai detected → translating to Korean');
     return groqTranslate(
       text,
-      'You are a professional Thai-to-Korean translator. Translate the Thai text to natural Korean. Reply with ONLY the Korean translation.'
+      'You are a professional Thai-to-Korean translator. Translate the following Thai text into natural Korean. Output ONLY the Korean translation — no explanation, no romanization, no Thai text.'
     );
   }
   if (KOREAN_REGEX.test(text)) {
     console.log('[Translate] Korean detected → translating to Thai');
     return groqTranslate(
       text,
-      'You are a professional Korean-to-Thai translator. Translate the Korean text to natural Thai. Reply with ONLY the Thai translation.'
+      'You are a professional Korean-to-Thai translator. Translate the following Korean text into natural Thai. Output ONLY the Thai translation — no explanation, no romanization, no Korean text.'
     );
   }
   return null;
