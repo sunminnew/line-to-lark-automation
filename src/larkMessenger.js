@@ -4,7 +4,7 @@
  *
  * Required env vars:
  *   LARK_APP_ID      -- Bot App ID
- *   LARK_APP_SECRET |-- Bot App Secret
+ *   LARK_APP_SECRET  -- Bot App Secret
  *   LARK_CHAT_ID     -- Target group chat_id (e.g. "oc_xxxxxxxx")
  *
  * Lark IM docs:
@@ -18,7 +18,7 @@ const APP_ID       = process.env.LARK_APP_ID;
 const APP_SECRET   = process.env.LARK_APP_SECRET;
 const LARK_CHAT_ID = process.env.LARK_CHAT_ID;
 
-// ââ Token cache (shared; same pattern as larkIntegration.js) ââââââââââââââââââââââââââ
+// Token cache (shared; same pattern as larkIntegration.js)
 let tokenCache = { token: null, expiresAt: 0 };
 
 async function getTenantToken() {
@@ -44,7 +44,7 @@ async function getTenantToken() {
 
 /**
  * Send a plain-text message to the configured Lark group chat.
- * @param {string} text   Message body (supports basic markdown: *bold*, _italic_)
+ * @param {string} text   Message body
  * @returns {Promise<string|null>}  Message ID or null on failure
  */
 async function sendToLarkGroup(text) {
@@ -76,7 +76,7 @@ async function sendToLarkGroup(text) {
     }
 
     const msgId = res.data.data?.message_id;
-    console.log(`[LarkMsg] â Message sent (id: ${msgId})`);
+    console.log(`[LarkMsg] Message sent (id: ${msgId})`);
     return msgId;
 
   } catch (err) {
@@ -86,14 +86,14 @@ async function sendToLarkGroup(text) {
 }
 
 /**
- * List all group chats the bot is in â useful for finding the right LARK_CHAT_ID.
+ * List all group chats the bot is in -- useful for finding the right LARK_CHAT_ID.
  * Call GET /lark-chats on the server to see results.
  * @returns {Promise<Array>}
  */
 async function listBotChats() {
   try {
     const token = await getTenantToken();
-    const res = await axios.get(`${LARK_BASE}/im/v1/chats?member_id_type=open_id`, {
+    const res = await axios.get(`${LARK_BASE}/im/v1/chats`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return res.data.data?.items ?? [];
