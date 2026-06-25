@@ -18,17 +18,16 @@ const {
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive }            = require('./keepAlive');
 const { summarizeForLark }          = require('./aiSummarizer');
-const { sendToLarkGroup, sendSummaryCard } = require('./larkMessenger');
+const { sendToLarkGroup, sendSummaryCard, sendAlertCard } = require('./larkMessenger');
 const { recordActivity, addOffHoursMessage } = require('./messageTracker');
 
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
 
-const LINE_API    = 'https://api.me';
 const LINE_TOKEN  = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const WEBHOOK_URL = 'https://line-to-lark-automation.onrender.com/webhook';
 
-// Reject with timeout after ms
+/** Reject with Error after ms */
 function withTimeout(promise, ms, label) {
   return Promise.race([
     promise,
@@ -62,7 +61,7 @@ app.get('/', (_req, res) => res.json({
 // ── Check & set LINE webhook ──────────────────────────────────────────────────
 app.get('/check-webhook', async (_req, res) => {
   try {
-    const r = await axios.get(`https://api.line.me/v2/bot/channel/webhook/endpoint`, {
+    const r = await axios.get('https://api.line.me/v2/bot/channel/webhook/endpoint', {
       headers: { Authorization: `Bearer ${LINE_TOKEN}` },
     });
     res.json({ current: r.data, expected: WEBHOOK_URL, match: r.data.endpoint === WEBHOOK_URL });
@@ -74,7 +73,7 @@ app.get('/check-webhook', async (_req, res) => {
 app.post('/setup-webhook', async (_req, res) => {
   try {
     const r = await axios.put(
-      `https://api.line.me/v2/bot/channel/webhook/endpoint`,
+      'https://api.line.me/v2/bot/channel/webhook/endpoint',
       { webhookEndpointUrl: WEBHOOK_URL },
       { headers: { Authorization: `Bearer ${LINE_TOKEN}`, 'Content-Type': 'application/json' } }
     );
@@ -116,10 +115,46 @@ app.post('/webhook', async (req, res) => {
   if (!signature || !verifySignature(req.rawBody, signature)) {
     return res.status(401).json({ error: 'Invalid signature' });
   }
-  // Respond 200 immediately — replyToken still valid for 30 s from here
+  // Respond 200 immediately — replyToken valid for 30 s from here
   res.sendStatus(200);
 
   for (const event of req.body.events ?? []) {
+
+    // ── JOIN event: bot added to a group ──────────────────────────────────
+    if (event.type === 'join') {
+      const groupId = event.source?.groupId ?? event.source?.roomId ?? 'unknown';
+      const now     = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+      console.log(`[JOIN] Bot joined group: ${groupId}`);
+      try {
+        await sendAlertCard(
+          '✅ อูจินเข้ากลุ่มใหม่',
+          `🤖 **อูจิน (우진)** ถูกเพิ่มเข้ากลุ่ม LINE แล้วครับ\n\n📌 **Group ID:** ${groupId}\n🕐 **เวลา:** ${now}\n\nพร้อมแปลภาษาและสรุปงานให้ทีมแล้วครับ 🙏`,
+          'green'
+        );
+      } catch (err) {
+        console.error('[JOIN] Lark alert failed:', err.message);
+      }
+      continue;
+    }
+
+    // ── LEAVE event: bot removed from a group ─────────────────────────────
+    if (event.type === 'leave') {
+      const groupId = event.source?.groupId ?? event.source?.roomId ?? 'unknown';
+      const now     = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+      console.log(`[LEAVE] Bot removed from group: ${groupId}`);
+      try {
+        await sendAlertCard(
+          '⚠️ อูจินถูกนำออกจากกลุ่ม',
+          `🚨 **อูจิน (우진)** ถูกนำออกจากกลุ่ม LINE\n\n📌 **Group ID:** ${groupId}\n🕐 **เวลา:** ${now}\n\n⚠️ หากต้องการให้บอทกลับมา กรุณาเพิ่มเข้ากลุ่มใหม่ครับ`,
+          'red'
+        );
+      } catch (err) {
+        console.error('[LEAVE] Lark alert failed:', err.message);
+      }
+      continue;
+    }
+
+    // ── MESSAGE events only ───────────────────────────────────────────────
     if (event.type !== 'message' || event.message?.type !== 'text') continue;
     const text = event.message.text?.trim();
     if (!text) continue;
@@ -136,6 +171,7 @@ app.post('/webhook', async (req, res) => {
     recordActivity(sourceId, senderName, text);
 
     // 2. สรุป keyword → 📋 Summary room
+    //    NOTE: continue is OUTSIDE try-catch so it always executes
     if (isSummaryRequest(text)) {
       try {
         await replyMessages(event.replyToken, [{ type: 'text', text: '📋 กำลังสรุปงานและส่งไป Lark นะครับ รอสักครู่...' }]);
@@ -153,7 +189,7 @@ app.post('/webhook', async (req, res) => {
       } catch (err) {
         console.error('[webhook] summary error:', err.message);
       }
-      continue;
+      continue; // ← always skip translation for สรุป keyword
     }
 
     // 3. Off-hours buffer
@@ -161,7 +197,7 @@ app.post('/webhook', async (req, res) => {
       addOffHoursMessage(sourceId, { timestamp, senderName, text });
     }
 
-    // 4. Translate & reply — wrapped in 20 s timeout + try-catch
+    // 4. Translate & reply — 20 s timeout + try-catch + fallback message
     try {
       const translations = await withTimeout(translateAll(text), 20000, 'translateAll');
       const replies = [];
@@ -171,11 +207,10 @@ app.post('/webhook', async (req, res) => {
       if (replies.length)   await replyMessages(event.replyToken, replies);
     } catch (err) {
       console.error('[webhook] translate error:', err.message);
-      // Fallback: let user know translation failed
       try {
         await replyMessages(event.replyToken, [{
           type: 'text',
-          text: `⚠️ ขณะนี้ระบบแปลชั่วคราวไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง\n(Translation temporarily unavailable, please retry)`,
+          text: '⚠️ ขณะนี้ระบบแปลชั่วคราวไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้งครับ\n(Translation temporarily unavailable, please retry)',
         }]);
       } catch (_) {}
     }
