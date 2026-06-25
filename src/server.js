@@ -1,58 +1,49 @@
 /**
  * server.js
- * Entry point. Bootstraps the Express webhook server, hourly cron job,
- * and the keep-alive pinger (free Render plan — prevents sleep).
- *
- * Features:
- *   - Thai to Korean translation 24/7 for every message in the group
- *   - Business hours 09:00-18:00 BKK: buffer messages for hourly Lark tasks
- *   - Outside hours: OOO reply appended after translation if any
+ * Express webhook server with:
+ *   - Thai→Korean translation (24/7)
+ *   - Stale-chat tracking (15m🟡 / 30m🔴 alerts via cronJob)
+ *   - Off-hours message buffering for morning delivery
+ *   - Business-hours message buffering for hourly Lark tasks
  */
 
 require('dotenv').config();
 
 const express = require('express');
 const { isBusinessHours, getBangkokTime } = require('./timeRouter');
-const { addMessage }   = require('./messageStore');
+const { isWorkingDay }   = require('./holidays');
+const { addMessage }     = require('./messageStore');
 const {
-  verifySignature,
-  translateToKorean,
-  replyMessages,
-  getSenderName,
-  OOO_MESSAGE,
+  verifySignature, translateToKorean,
+  replyMessages, getSenderName, OOO_MESSAGE,
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive }            = require('./keepAlive');
 const { summarizeForLark }          = require('./aiSummarizer');
 const { sendToLarkGroup }           = require('./larkMessenger');
+const { recordActivity, addOffHoursMessage } = require('./messageTracker');
 
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
 
-// Raw body capture (required for LINE signature verification)
-app.use(
-  express.json({
-    verify: (req, _res, buf) => { req.rawBody = buf; },
-  })
-);
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
-// Health check
-app.get('/', (_req, res) => {
-  res.json({
-    status: 'ok',
-    bangkokTime: getBangkokTime(),
-    businessHours: isBusinessHours(),
-  });
-});
+// ─── Health check ─────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => res.json({
+  status: 'ok',
+  bangkokTime:   getBangkokTime(),
+  businessHours: isBusinessHours(),
+  workingDay:    isWorkingDay(new Date()),
+}));
 
-// Manual pipeline trigger
+// ─── Manual pipeline trigger ──────────────────────────────────────────────────
 app.post('/trigger', async (_req, res) => {
-  console.log('[Manual] Pipeline triggered via /trigger endpoint');
+  console.log('[Manual] Pipeline triggered via /trigger');
   await runPipeline();
   res.json({ status: 'pipeline executed' });
 });
 
-// E2E test: fake messages → AI summary → send to Lark group
+// ─── E2E test ─────────────────────────────────────────────────────────────────
 app.get('/e2e-test', async (_req, res) => {
   try {
     const fakeMessages = [
@@ -66,60 +57,58 @@ app.get('/e2e-test', async (_req, res) => {
     const msgId = await sendToLarkGroup(larkText);
     res.json({ success: !!msgId, msgId, larkText });
   } catch (err) {
-    res.status(500).json({ error: err.message, stack: err.stack });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// LINE Webhook
+// ─── LINE Webhook ─────────────────────────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
   const signature = req.headers['x-line-signature'];
   if (!signature || !verifySignature(req.rawBody, signature)) {
-    console.warn('[Webhook] Invalid signature -- request rejected.');
+    console.warn('[Webhook] Invalid signature.');
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
-  // Respond 200 immediately; process events asynchronously.
   res.sendStatus(200);
 
-  const events = req.body.events ?? [];
-
-  for (const event of events) {
+  for (const event of req.body.events ?? []) {
     if (event.type !== 'message' || event.message?.type !== 'text') continue;
 
-    const replyToken = event.replyToken;
-    const text       = event.message.text?.trim();
-    const timestamp  = new Date(event.timestamp).toISOString();
-
+    const text      = event.message.text?.trim();
+    const timestamp = new Date(event.timestamp).toISOString();
     if (!text) continue;
 
-    // 1. Translate Thai to Korean (24/7)
-    const koreanText = await translateToKorean(text);
+    const sourceId   = event.source?.groupId ?? event.source?.roomId ?? event.source?.userId ?? 'unknown';
     const inBizHours = isBusinessHours();
+    const isWorking  = isWorkingDay(new Date());
 
-    // 2. Build reply messages
+    // Resolve sender name (needed for tracking + buffering)
+    const senderName = await getSenderName(event);
+
+    // 1. Record activity — resets stale-chat alert timer
+    recordActivity(sourceId, senderName, text);
+
+    // 2. Off-hours buffer (outside business hours OR non-working day)
+    if (!inBizHours || !isWorking) {
+      addOffHoursMessage(sourceId, { timestamp, senderName, text });
+    }
+
+    // 3. Translate Thai → Korean (24/7)
+    const koreanText = await translateToKorean(text);
     const replies = [];
-    if (koreanText) {
-      replies.push({ type: 'text', text: 'KR: ' + koreanText });
-      console.log('[Translate] TH->KR: "' + text.slice(0, 30) + '"');
-    }
-    if (!inBizHours) {
-      replies.push({ type: 'text', text: OOO_MESSAGE });
-      console.log('[Webhook] OOO appended.');
-    }
-    if (replies.length > 0) {
-      await replyMessages(replyToken, replies);
-    }
+    if (koreanText) replies.push({ type: 'text', text: 'KR: ' + koreanText });
+    if (!inBizHours) replies.push({ type: 'text', text: OOO_MESSAGE });
+    if (replies.length) await replyMessages(event.replyToken, replies);
 
-    // 3. Buffer for Lark tasks during business hours
-    if (inBizHours) {
-      const senderName = await getSenderName(event);
+    // 4. Business-hours buffer for hourly Lark task pipeline
+    if (inBizHours && isWorking) {
       addMessage({ timestamp, senderName, text });
-      console.log('[Webhook] Buffered from ' + senderName + ': "' + text.slice(0, 40) + '"');
+      console.log('[Webhook] Buffered: ' + senderName + ': "' + text.slice(0, 40) + '"');
     }
   }
 });
 
-// Setup webhook (one-time helper)
+// ─── Setup webhook (one-time helper) ─────────────────────────────────────────
 app.get('/setup-webhook', async (_req, res) => {
   try {
     const webhookUrl = 'https://line-to-lark-automation.onrender.com/webhook';
@@ -134,11 +123,12 @@ app.get('/setup-webhook', async (_req, res) => {
   }
 });
 
-// Start
+// ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('\n Server running on port ' + PORT);
   console.log('   Bangkok time : ' + getBangkokTime());
   console.log('   Business hrs : ' + (isBusinessHours() ? 'YES' : 'NO'));
+  console.log('   Working day  : ' + (isWorkingDay(new Date()) ? 'YES' : 'NO'));
   startCronJob();
   startKeepAlive();
 });
