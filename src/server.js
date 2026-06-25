@@ -7,9 +7,10 @@
  */
 require('dotenv').config();
 const express = require('express');
+const axios   = require('axios');
 const { isBusinessHours, getBangkokTime } = require('./timeRouter');
-const { isWorkingDay }   = require('./holidays');
-const { addMessage, flushMessages } = require('./messageStore');
+const { isWorkingDay }                    = require('./holidays');
+const { addMessage, flushMessages }       = require('./messageStore');
 const {
   verifySignature, translateAll,
   replyMessages, getSenderName, OOO_MESSAGE,
@@ -23,6 +24,10 @@ const { recordActivity, addOffHoursMessage } = require('./messageTracker');
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
 
+const LINE_API       = 'https://api.line.me';
+const LINE_TOKEN     = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const WEBHOOK_URL    = 'https://line-to-lark-automation.onrender.com/webhook';
+
 app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 const SUMMARY_KEYWORDS = ['สรุป','สรุปงาน','สรุปแชท','/สรุป','summary','/summary'];
@@ -33,16 +38,41 @@ function isSummaryRequest(text) {
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => res.json({
-  status: 'ok',
-  bangkokTime:   getBangkokTime(),
+  status:       'ok',
+  bangkokTime:  getBangkokTime(),
   businessHours: isBusinessHours(),
-  workingDay:    isWorkingDay(new Date()),
+  workingDay:   isWorkingDay(new Date()),
   rooms: {
     hub:     'oc_626fd292d23700898b50fd059c1798ed',
     alert:   'oc_339458a388434ff81afde59342b511b3',
     summary: 'oc_a62e855cfd58229964b2d68b224288b8',
   },
 }));
+
+// ── Check & set LINE webhook ──────────────────────────────────────────────────
+app.get('/check-webhook', async (_req, res) => {
+  try {
+    const r = await axios.get(`${LINE_API}/v2/bot/channel/webhook/endpoint`, {
+      headers: { Authorization: `Bearer ${LINE_TOKEN}` },
+    });
+    res.json({ current: r.data, expected: WEBHOOK_URL, match: r.data.endpoint === WEBHOOK_URL });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data ?? err.message });
+  }
+});
+
+app.post('/setup-webhook', async (_req, res) => {
+  try {
+    const r = await axios.put(
+      `${LINE_API}/v2/bot/channel/webhook/endpoint`,
+      { webhookEndpointUrl: WEBHOOK_URL },
+      { headers: { Authorization: `Bearer ${LINE_TOKEN}`, 'Content-Type': 'application/json' } }
+    );
+    res.json({ set: WEBHOOK_URL, lineResponse: r.data });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data ?? err.message });
+  }
+});
 
 // ── Manual pipeline trigger ───────────────────────────────────────────────────
 app.post('/trigger', async (_req, res) => {
@@ -58,9 +88,9 @@ app.get('/e2e-test', async (_req, res) => {
       { timestamp: new Date().toISOString(), senderName: 'ทดสอบ', text: 'ส่งเอกสาร visa application ให้ทีม HR' },
       { timestamp: new Date().toISOString(), senderName: 'ทดสอบ', text: 'อัพเดต timeline งาน Legal ให้ผู้บริหาร' },
     ];
-    const summary = await summarizeForLark(fakeMessages, 'e2e-test');
-    const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-    const msgId = await sendSummaryCard(
+    const summary  = await summarizeForLark(fakeMessages, 'e2e-test');
+    const now      = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    const msgId    = await sendSummaryCard(
       `📋 E2E Test — ${now}`,
       `🧪 ทดสอบระบบสำเร็จ!\nจำนวนข้อความ: ${fakeMessages.length} รายการ\n\n${summary}`
     );
@@ -83,11 +113,11 @@ app.post('/webhook', async (req, res) => {
     const text = event.message.text?.trim();
     if (!text) continue;
 
-    const sourceId   = event.source?.groupId ?? event.source?.roomId ?? event.source?.userId ?? 'unknown';
-    const inBizHours = isBusinessHours();
-    const isWorking  = isWorkingDay(new Date());
-    const timestamp  = new Date(event.timestamp).toISOString();
-    const senderName = await getSenderName(event);
+    const sourceId    = event.source?.groupId ?? event.source?.roomId ?? event.source?.userId ?? 'unknown';
+    const inBizHours  = isBusinessHours();
+    const isWorking   = isWorkingDay(new Date());
+    const timestamp   = new Date(event.timestamp).toISOString();
+    const senderName  = await getSenderName(event);
 
     // 1. Record activity — resets stale-chat alert timer
     recordActivity(sourceId, senderName, text);
@@ -100,7 +130,7 @@ app.post('/webhook', async (req, res) => {
         await sendSummaryCard('📋 ไม่มีข้อความที่จะสรุป', 'ยังไม่มีข้อความสะสมในระบบครับ');
       } else {
         const summary = await summarizeForLark(msgs, sourceId);
-        const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+        const now     = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
         await sendSummaryCard(
           `📋 สรุปบทสนทนา LINE — ${now}`,
           `📌 **ขอโดย:** ${senderName}\n📊 **จำนวน:** ${msgs.length} ข้อความ\n\n${summary}`
@@ -130,27 +160,12 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// ── Setup webhook (one-time helper) ──────────────────────────────────────────
-app.get('/setup-webhook', async (_req, res) => {
-  try {
-    const webhookUrl = 'https://line-to-lark-automation.onrender.com/webhook';
-    const r = await require('axios').put(
-      'https://api.line.me/v2/bot/channel/webhook/endpoint',
-      { webhookEndpointUrl: webhookUrl },
-      { headers: { Authorization: 'Bearer ' + process.env.LINE_CHANNEL_ACCESS_TOKEN } }
-    );
-    res.json({ set: webhookUrl, lineResponse: r.data });
-  } catch (err) {
-    res.status(500).json({ error: err.response?.data ?? err.message });
-  }
-});
-
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('\n🚀 Server running on port ' + PORT);
-  console.log('   Bangkok time : ' + getBangkokTime());
-  console.log('   Business hrs : ' + (isBusinessHours() ? 'YES ✅' : 'NO ❌'));
-  console.log('   Rooms ready  : Hub | Alert | Summary');
+  console.log('  Bangkok time : ' + getBangkokTime());
+  console.log('  Business hrs : ' + (isBusinessHours() ? 'YES ✅' : 'NO ❌'));
+  console.log('  Rooms ready  : Hub | Alert | Summary');
   startCronJob();
   startKeepAlive();
 });
