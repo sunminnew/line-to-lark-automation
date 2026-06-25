@@ -1,7 +1,7 @@
 /**
  * server.js
  * Express webhook server with:
- *   - Thai→Korean translation (24/7)
+ *   - Thai→KR, Korean→TH, English→KR+TH translation (24/7)
  *   - Keyword "สรุป" → AI summary → send to Lark immediately
  *   - Stale-chat tracking (15m🟡 / 30m🔴 alerts via cronJob)
  *   - Off-hours message buffering for morning delivery
@@ -13,9 +13,9 @@ require('dotenv').config();
 const express = require('express');
 const { isBusinessHours, getBangkokTime } = require('./timeRouter');
 const { isWorkingDay }   = require('./holidays');
-const { addMessage }     = require('./messageStore');
+const { addMessage, flushMessages } = require('./messageStore');
 const {
-  verifySignature, translateToKorean,
+  verifySignature, translateAll,
   replyMessages, getSenderName, OOO_MESSAGE,
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
@@ -29,7 +29,6 @@ const PORT = process.env.PORT ?? 3000;
 
 app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
-// Keywords that trigger an immediate summary to Lark
 const SUMMARY_KEYWORDS = ['สรุป', 'สรุปงาน', 'สรุปแชท', '/สรุป', 'summary', '/summary'];
 function isSummaryRequest(text) {
   const t = text.trim().toLowerCase();
@@ -95,8 +94,8 @@ app.post('/webhook', async (req, res) => {
     // 2. "สรุป" keyword → immediate AI summary → Lark
     if (isSummaryRequest(text)) {
       await replyMessages(event.replyToken, [{ type: 'text', text: '📋 กำลังสรุปงานและส่งไป Lark นะครับ รอสักครู่...' }]);
-      const msgs = flushMessages ? (() => { try { return require('./messageStore').flushMessages(); } catch(e) { return []; } })() : [];
-      if (msgs.length === 0) {
+      const msgs = flushMessages();
+      if (!msgs.length) {
         await sendToLarkGroup('📋 ยังไม่มีข้อความในกลุ่มนี้ที่จะสรุปครับ');
       } else {
         const summary = await summarizeForLark(msgs, sourceId);
@@ -106,7 +105,6 @@ app.post('/webhook', async (req, res) => {
           'ผู้ขอสรุป: ' + senderName + '\nจำนวนข้อความ: ' + msgs.length + ' รายการ\n\n' + summary,
           'blue'
         );
-        console.log('[Webhook] Summary sent to Lark by ' + senderName);
       }
       continue;
     }
@@ -116,12 +114,14 @@ app.post('/webhook', async (req, res) => {
       addOffHoursMessage(sourceId, { timestamp, senderName, text });
     }
 
-    // 4. Translate Thai → Korean (24/7)
-    const koreanText = await translateToKorean(text);
+    // 4. Translate and reply (24/7)
+    //    Thai → KR only | Korean → TH only | English → KR + TH
+    const translations = await translateAll(text);
     const replies = [];
-    if (koreanText) replies.push({ type: 'text', text: 'KR: ' + koreanText });
-    if (!inBizHours) replies.push({ type: 'text', text: OOO_MESSAGE });
-    if (replies.length) await replyMessages(event.replyToken, replies);
+    if (translations?.kr) replies.push({ type: 'text', text: 'KR: ' + translations.kr });
+    if (translations?.th) replies.push({ type: 'text', text: 'TH: ' + translations.th });
+    if (!inBizHours)      replies.push({ type: 'text', text: OOO_MESSAGE });
+    if (replies.length)   await replyMessages(event.replyToken, replies);
 
     // 5. Business-hours buffer for hourly Lark task pipeline
     if (inBizHours && isWorking) {
