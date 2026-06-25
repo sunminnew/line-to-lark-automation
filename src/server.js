@@ -2,6 +2,7 @@
  * server.js
  * Express webhook server with:
  *   - Thai→Korean translation (24/7)
+ *   - Keyword "สรุป" → AI summary → send to Lark immediately
  *   - Stale-chat tracking (15m🟡 / 30m🔴 alerts via cronJob)
  *   - Off-hours message buffering for morning delivery
  *   - Business-hours message buffering for hourly Lark tasks
@@ -20,13 +21,20 @@ const {
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive }            = require('./keepAlive');
 const { summarizeForLark }          = require('./aiSummarizer');
-const { sendToLarkGroup }           = require('./larkMessenger');
+const { sendToLarkGroup, sendAlertCard } = require('./larkMessenger');
 const { recordActivity, addOffHoursMessage } = require('./messageTracker');
 
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
 
 app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
+
+// Keywords that trigger an immediate summary to Lark
+const SUMMARY_KEYWORDS = ['สรุป', 'สรุปงาน', 'สรุปแชท', '/สรุป', 'summary', '/summary'];
+function isSummaryRequest(text) {
+  const t = text.trim().toLowerCase();
+  return SUMMARY_KEYWORDS.some(k => t === k || t.startsWith(k + ' '));
+}
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => res.json({
@@ -38,7 +46,6 @@ app.get('/', (_req, res) => res.json({
 
 // ─── Manual pipeline trigger ──────────────────────────────────────────────────
 app.post('/trigger', async (_req, res) => {
-  console.log('[Manual] Pipeline triggered via /trigger');
   await runPipeline();
   res.json({ status: 'pipeline executed' });
 });
@@ -65,7 +72,6 @@ app.get('/e2e-test', async (_req, res) => {
 app.post('/webhook', async (req, res) => {
   const signature = req.headers['x-line-signature'];
   if (!signature || !verifySignature(req.rawBody, signature)) {
-    console.warn('[Webhook] Invalid signature.');
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
@@ -81,29 +87,45 @@ app.post('/webhook', async (req, res) => {
     const sourceId   = event.source?.groupId ?? event.source?.roomId ?? event.source?.userId ?? 'unknown';
     const inBizHours = isBusinessHours();
     const isWorking  = isWorkingDay(new Date());
-
-    // Resolve sender name (needed for tracking + buffering)
     const senderName = await getSenderName(event);
 
     // 1. Record activity — resets stale-chat alert timer
     recordActivity(sourceId, senderName, text);
 
-    // 2. Off-hours buffer (outside business hours OR non-working day)
+    // 2. "สรุป" keyword → immediate AI summary → Lark
+    if (isSummaryRequest(text)) {
+      await replyMessages(event.replyToken, [{ type: 'text', text: '📋 กำลังสรุปงานและส่งไป Lark นะครับ รอสักครู่...' }]);
+      const msgs = flushMessages ? (() => { try { return require('./messageStore').flushMessages(); } catch(e) { return []; } })() : [];
+      if (msgs.length === 0) {
+        await sendToLarkGroup('📋 ยังไม่มีข้อความในกลุ่มนี้ที่จะสรุปครับ');
+      } else {
+        const summary = await summarizeForLark(msgs, sourceId);
+        const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+        await sendAlertCard(
+          '📋 สรุปบทสนทนา LINE — ' + now,
+          'ผู้ขอสรุป: ' + senderName + '\nจำนวนข้อความ: ' + msgs.length + ' รายการ\n\n' + summary,
+          'blue'
+        );
+        console.log('[Webhook] Summary sent to Lark by ' + senderName);
+      }
+      continue;
+    }
+
+    // 3. Off-hours buffer
     if (!inBizHours || !isWorking) {
       addOffHoursMessage(sourceId, { timestamp, senderName, text });
     }
 
-    // 3. Translate Thai → Korean (24/7)
+    // 4. Translate Thai → Korean (24/7)
     const koreanText = await translateToKorean(text);
     const replies = [];
     if (koreanText) replies.push({ type: 'text', text: 'KR: ' + koreanText });
     if (!inBizHours) replies.push({ type: 'text', text: OOO_MESSAGE });
     if (replies.length) await replyMessages(event.replyToken, replies);
 
-    // 4. Business-hours buffer for hourly Lark task pipeline
+    // 5. Business-hours buffer for hourly Lark task pipeline
     if (inBizHours && isWorking) {
       addMessage({ timestamp, senderName, text });
-      console.log('[Webhook] Buffered: ' + senderName + ': "' + text.slice(0, 40) + '"');
     }
   }
 });
@@ -128,7 +150,6 @@ app.listen(PORT, () => {
   console.log('\n Server running on port ' + PORT);
   console.log('   Bangkok time : ' + getBangkokTime());
   console.log('   Business hrs : ' + (isBusinessHours() ? 'YES' : 'NO'));
-  console.log('   Working day  : ' + (isWorkingDay(new Date()) ? 'YES' : 'NO'));
   startCronJob();
   startKeepAlive();
 });
