@@ -10,7 +10,7 @@ const axios = require('axios');
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = 'llama-3.1-8b-instant'; // free & fast
+const GROQ_MODEL = 'llama-3.3-70b-versatile'; // best quality, still free tier
 
 // ── อูจิน Identity ───────────────────────────────────────────────────────────
 const UJIN_NAME = 'อูจิน (우진)';
@@ -66,21 +66,21 @@ async function translateAll(text) {
   if (THAI_REGEX.test(text)) {
     const kr = await groqTranslate(
       text,
-      'You are a professional translator. Output ONLY the Korean (한국어) translation of the message. No explanation, no prefix.'
+      'Translate the following message entirely into Korean (한국어). Output ONLY the Korean translation. Every word must be translated — do not leave any Thai or other language words in the output. No explanation, no prefix.'
     );
     return { kr };
   }
   if (KOREAN_REGEX.test(text)) {
     const th = await groqTranslate(
       text,
-      'You are a professional translator. Output ONLY the Thai (ภาษาไทย) translation of the message. No explanation, no prefix.'
+      'Translate the following message entirely into Thai (ภาษาไทย). Output ONLY the Thai translation. Every word must be translated — do not leave any Korean or other language words in the output. No explanation, no prefix.'
     );
     return { th };
   }
   if (ENGLISH_REGEX.test(text) && text.trim().length > 1) {
     const [kr, th] = await Promise.all([
-      groqTranslate(text, 'You are a professional translator. Output ONLY the Korean (한국어) translation. No explanation.'),
-      groqTranslate(text, 'You are a professional translator. Output ONLY the Thai (ภาษาไทย) translation. No explanation.'),
+      groqTranslate(text, 'Translate the following message entirely into Korean (한국어). Output ONLY the Korean translation. Every word must be translated. No explanation, no prefix.'),
+      groqTranslate(text, 'Translate the following message entirely into Thai (ภาษาไทย). Output ONLY the Thai translation. Every word must be translated. No explanation, no prefix.'),
     ]);
     return { kr, th };
   }
