@@ -5,12 +5,12 @@
  */
 require('dotenv').config();
 const crypto = require('crypto');
-const axios  = require('axios');
+const axios = require('axios');
 
-const CHANNEL_SECRET       = process.env.LINE_CHANNEL_SECRET;
+const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const GROQ_API_KEY         = process.env.GROQ_API_KEY;
-const GROQ_MODEL           = 'llama-3.3-70b-versatile';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = 'llama-3.1-8b-instant'; // free & fast
 
 // ── อูจิน Identity ───────────────────────────────────────────────────────────
 const UJIN_NAME = 'อูจิน (우진)';
@@ -42,8 +42,8 @@ async function groqTranslate(text, systemPrompt) {
         { role: 'system', content: systemPrompt },
         { role: 'user',   content: text },
       ],
-      temperature:  0.3,
-      max_tokens:  512,
+      temperature: 0.3,
+      max_tokens: 512,
     },
     { headers: { Authorization: `Bearer ${GROQ_API_KEY}` } }
   );
@@ -53,44 +53,34 @@ async function groqTranslate(text, systemPrompt) {
 // ── Language Detection ────────────────────────────────────────────────────────
 const THAI_REGEX    = /[฀-๿]/;
 const KOREAN_REGEX  = /[가-힯ᄀ-ᇿ㄰-㆏]/;
-const ENGLISH_REGEX = /^[A-Za-z0-9sp{P}p{S}]+$/u;
+const ENGLISH_REGEX = /^[A-Za-z0-9\s\p{P}\p{S}]+$/u;
 
 /**
- * translateAll — detect language and translate
- *   Thai    → Korean only
- *   Korean  → Thai only
- *   English → Korean + Thai (parallel)
+ * translateAll — detect language and translate 24/7
+ * Thai    → Korean only
+ * Korean  → Thai only
+ * English → Korean + Thai (parallel)
  * @returns { kr?, th? } or null if no translation needed
  */
 async function translateAll(text) {
   if (THAI_REGEX.test(text)) {
     const kr = await groqTranslate(
       text,
-      'You are ${UJIN_NAME}, a professional bilingual assistant at ${COMPANY}. ' +
-      'Output ONLY the Korean (한국어) translation of the user\'s message. No explanation.'
+      'You are a professional translator. Output ONLY the Korean (한국어) translation of the message. No explanation, no prefix.'
     );
     return { kr };
   }
   if (KOREAN_REGEX.test(text)) {
     const th = await groqTranslate(
       text,
-      'You are ${UJIN_NAME}, a professional bilingual assistant at ${COMPANY}. ' +
-      'Output ONLY the Thai (ภาษาไทย) translation of the user\'s message. No explanation.'
+      'You are a professional translator. Output ONLY the Thai (ภาษาไทย) translation of the message. No explanation, no prefix.'
     );
     return { th };
   }
   if (ENGLISH_REGEX.test(text) && text.trim().length > 1) {
     const [kr, th] = await Promise.all([
-      groqTranslate(
-        text,
-        'You are ${UJIN_NAME}, a professional bilingual assistant at ${COMPANY}. ' +
-        'Output ONLY the Korean (한국어) translation. No explanation.'
-      ),
-      groqTranslate(
-        text,
-        'You are ${UJIN_NAME}, a professional bilingual assistant at ${COMPANY}. ' +
-        'Output ONLY the Thai (ภาษาไทย) translation. No explanation.'
-      ),
+      groqTranslate(text, 'You are a professional translator. Output ONLY the Korean (한국어) translation. No explanation.'),
+      groqTranslate(text, 'You are a professional translator. Output ONLY the Thai (ภาษาไทย) translation. No explanation.'),
     ]);
     return { kr, th };
   }
