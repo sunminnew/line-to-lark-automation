@@ -38,6 +38,21 @@ function shouldSendOOO(sourceId) {
   return true;
 }
 
+// ── LINE 5,000-char limit guard ───────────────────────────────────────────────
+// LINE rejects text messages longer than 5,000 chars.
+// Split long translations into multiple bubbles (max 4 chunks × 4,900 chars).
+const MAX_LINE_TEXT = 4900;
+
+function toLineMessages(prefix, text) {
+  const full = prefix + text;
+  if (full.length <= MAX_LINE_TEXT) return [{ type: 'text', text: full }];
+  const chunks = [];
+  for (let i = 0; i < full.length && chunks.length < 4; i += MAX_LINE_TEXT) {
+    chunks.push({ type: 'text', text: full.slice(i, i + MAX_LINE_TEXT) });
+  }
+  return chunks;
+}
+
 /** Reject with Error after ms */
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -170,7 +185,7 @@ app.post('/webhook', async (req, res) => {
     const text = event.message.text?.trim();
     if (!text) continue;
 
-    const sourceId  = event.source?.groupId ?? event.source?.roomId ?? event.source?.userId ?? 'unknown';
+    const sourceId   = event.source?.groupId ?? event.source?.roomId ?? event.source?.userId ?? 'unknown';
     const inBizHours = isBusinessHours();
     const isWorking  = isWorkingDay(new Date());
     const timestamp  = new Date(event.timestamp).toISOString();
@@ -199,7 +214,7 @@ app.post('/webhook', async (req, res) => {
       } catch (err) {
         console.error('[webhook] summary error:', err.message);
       }
-      continue; // ← always skip translation for สรุป keyword
+      continue;
     }
 
     // 3. Off-hours buffer
@@ -211,15 +226,17 @@ app.post('/webhook', async (req, res) => {
     try {
       const translations = await withTimeout(translateAll(text), 20000, 'translateAll');
       const replies = [];
-      if (translations?.kr) replies.push({ type: 'text', text: 'KR: ' + translations.kr });
-      if (translations?.th) replies.push({ type: 'text', text: 'TH: ' + translations.th });
-      // OOO message — send only ONCE per day per source (not every message)
+      // Split long translations into multiple bubbles (LINE max 5,000 chars/msg)
+      if (translations?.kr) replies.push(...toLineMessages('KR: ', translations.kr));
+      if (translations?.th) replies.push(...toLineMessages('TH: ', translations.th));
+      // OOO — send only ONCE per day per source
       if ((!inBizHours || !isWorking) && shouldSendOOO(sourceId)) {
         replies.push({ type: 'text', text: OOO_MESSAGE });
       }
       if (replies.length) {
         try {
-          await replyMessages(event.replyToken, replies);
+          // LINE allows max 5 messages per reply token
+          await replyMessages(event.replyToken, replies.slice(0, 5));
         } catch (replyErr) {
           console.error('[webhook] reply error:', replyErr.message,
             replyErr.response?.data ? JSON.stringify(replyErr.response.data) : '');
