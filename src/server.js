@@ -1,8 +1,8 @@
 /**
  * server.js — LINE → Groq AI → Lark
  * Rooms:
- *   📣 All Updates  → hourly pipeline (main hub)
- *   🚨 Alert room   → stale-chat yellow/red alerts (cronJob)
+ *   📣 All Updates → hourly pipeline (main hub)
+ *   🚨 Alert room  → stale-chat yellow/red alerts (cronJob)
  *   📋 Summary room → สรุป keyword + morning/evening summaries
  */
 require('dotenv').config();
@@ -15,9 +15,9 @@ const {
   verifySignature, translateAll,
   replyMessages, getSenderName, OOO_MESSAGE,
 } = require('./lineHandler');
-const { startCronJob, runPipeline } = require('./cronJob');
-const { startKeepAlive }            = require('./keepAlive');
-const { summarizeForLark }          = require('./aiSummarizer');
+const { startCronJob, runPipeline }     = require('./cronJob');
+const { startKeepAlive }                = require('./keepAlive');
+const { summarizeForLark }              = require('./aiSummarizer');
 const { sendToLarkGroup, sendSummaryCard, sendAlertCard } = require('./larkMessenger');
 const { recordActivity, addOffHoursMessage } = require('./messageTracker');
 
@@ -26,6 +26,17 @@ const PORT = process.env.PORT ?? 3000;
 
 const LINE_TOKEN  = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const WEBHOOK_URL = 'https://line-to-lark-automation.onrender.com/webhook';
+
+// ── OOO deduplication — send once per calendar day per source ─────────────────
+// Key: sourceId  Value: Bangkok date string 'YYYY-MM-DD'
+const oooSentMap = new Map();
+
+function shouldSendOOO(sourceId) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  if (oooSentMap.get(sourceId) === today) return false;
+  oooSentMap.set(sourceId, today);
+  return true;
+}
 
 /** Reject with Error after ms */
 function withTimeout(promise, ms, label) {
@@ -47,10 +58,10 @@ function isSummaryRequest(text) {
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => res.json({
-  status:        'ok',
-  bangkokTime:   getBangkokTime(),
+  status: 'ok',
+  bangkokTime: getBangkokTime(),
   businessHours: isBusinessHours(),
-  workingDay:    isWorkingDay(new Date()),
+  workingDay: isWorkingDay(new Date()),
   rooms: {
     hub:     'oc_626fd292d23700898b50fd059c1798ed',
     alert:   'oc_339458a388434ff81afde59342b511b3',
@@ -159,7 +170,7 @@ app.post('/webhook', async (req, res) => {
     const text = event.message.text?.trim();
     if (!text) continue;
 
-    const sourceId   = event.source?.groupId ?? event.source?.roomId ?? event.source?.userId ?? 'unknown';
+    const sourceId  = event.source?.groupId ?? event.source?.roomId ?? event.source?.userId ?? 'unknown';
     const inBizHours = isBusinessHours();
     const isWorking  = isWorkingDay(new Date());
     const timestamp  = new Date(event.timestamp).toISOString();
@@ -171,7 +182,6 @@ app.post('/webhook', async (req, res) => {
     recordActivity(sourceId, senderName, text);
 
     // 2. สรุป keyword → 📋 Summary room
-    //    NOTE: continue is OUTSIDE try-catch so it always executes
     if (isSummaryRequest(text)) {
       try {
         await replyMessages(event.replyToken, [{ type: 'text', text: '📋 กำลังสรุปงานและส่งไป Lark นะครับ รอสักครู่...' }]);
@@ -197,20 +207,31 @@ app.post('/webhook', async (req, res) => {
       addOffHoursMessage(sourceId, { timestamp, senderName, text });
     }
 
-    // 4. Translate & reply — 20 s timeout + try-catch + fallback message
+    // 4. Translate 24/7 — 20 s timeout
     try {
       const translations = await withTimeout(translateAll(text), 20000, 'translateAll');
       const replies = [];
       if (translations?.kr) replies.push({ type: 'text', text: 'KR: ' + translations.kr });
       if (translations?.th) replies.push({ type: 'text', text: 'TH: ' + translations.th });
-      if (!inBizHours)      replies.push({ type: 'text', text: OOO_MESSAGE });
-      if (replies.length)   await replyMessages(event.replyToken, replies);
+      // OOO message — send only ONCE per day per source (not every message)
+      if ((!inBizHours || !isWorking) && shouldSendOOO(sourceId)) {
+        replies.push({ type: 'text', text: OOO_MESSAGE });
+      }
+      if (replies.length) {
+        try {
+          await replyMessages(event.replyToken, replies);
+        } catch (replyErr) {
+          console.error('[webhook] reply error:', replyErr.message,
+            replyErr.response?.data ? JSON.stringify(replyErr.response.data) : '');
+        }
+      }
     } catch (err) {
-      console.error('[webhook] translate error:', err.message);
+      console.error('[webhook] translate error:', err.message,
+        err.response?.data ? JSON.stringify(err.response.data) : '');
       try {
         await replyMessages(event.replyToken, [{
           type: 'text',
-          text: '⚠️ ขณะนี้ระบบแปลชั่วคราวไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้งครับ\n(Translation temporarily unavailable, please retry)',
+          text: '⚠️ ขณะนี้ระบบแปลชั่วคราวไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้งครับ',
         }]);
       } catch (_) {}
     }
@@ -225,9 +246,9 @@ app.post('/webhook', async (req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('\n🚀 Server running on port ' + PORT);
-  console.log('  Bangkok time : ' + getBangkokTime());
-  console.log('  Business hrs : ' + (isBusinessHours() ? 'YES ✅' : 'NO ❌'));
-  console.log('  Rooms ready  : Hub | Alert | Summary');
+  console.log(' Bangkok time : ' + getBangkokTime());
+  console.log(' Business hrs : ' + (isBusinessHours() ? 'YES ✅' : 'NO ❌'));
+  console.log(' Rooms ready  : Hub | Alert | Summary');
   startCronJob();
   startKeepAlive();
 });
