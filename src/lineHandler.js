@@ -5,12 +5,16 @@
  */
 require('dotenv').config();
 const crypto = require('crypto');
-const axios = require('axios');
+const axios  = require('axios');
 
-const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
+const CHANNEL_SECRET      = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = 'llama-3.3-70b-versatile'; // production, 300K TPM free
+const GROQ_API_KEY        = process.env.GROQ_API_KEY;
+
+// Primary: best quality (300K TPM, 100K TPD on free tier)
+// Fallback: fast & cheap — auto-used when primary hits daily limit (429)
+const GROQ_MODEL_PRIMARY  = 'llama-3.3-70b-versatile';
+const GROQ_MODEL_FALLBACK = 'llama-3.1-8b-instant';
 
 // ── อูจิน Identity ───────────────────────────────────────────────────────────
 const UJIN_NAME = 'อูจิน (우진)';
@@ -32,28 +36,59 @@ function verifySignature(body, signature) {
   return hash === signature;
 }
 
-// ── Groq AI Translation ───────────────────────────────────────────────────────
-async function groqTranslate(text, systemPrompt) {
-  const res = await axios.post(
-    'https://api.groq.com/openai/v1/chat/completions',
-    {
-      model: GROQ_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: text },
-      ],
-      temperature: 0.3,
-      max_tokens: 4096,
-    },
-    { headers: { Authorization: `Bearer ${GROQ_API_KEY}` } }
-  );
-  return res.data.choices[0].message.content.trim();
+// ── Groq AI Translation (with automatic fallback on 429) ─────────────────────
+async function groqTranslate(text, systemPrompt, model = GROQ_MODEL_PRIMARY) {
+  try {
+    const res = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: text },
+        ],
+        temperature: 0.1,
+        max_tokens: 4096,
+      },
+      { headers: { Authorization: `Bearer ${GROQ_API_KEY}` } }
+    );
+    return res.data.choices[0].message.content.trim();
+  } catch (err) {
+    // Auto-fallback: if primary hits rate/daily limit, retry with smaller model
+    if (err.response?.status === 429 && model === GROQ_MODEL_PRIMARY) {
+      console.log('[Groq] Primary model rate-limited → falling back to ' + GROQ_MODEL_FALLBACK);
+      return groqTranslate(text, systemPrompt, GROQ_MODEL_FALLBACK);
+    }
+    throw err;
+  }
 }
 
 // ── Language Detection ────────────────────────────────────────────────────────
 const THAI_REGEX    = /[฀-๿]/;
 const KOREAN_REGEX  = /[가-힯ᄀ-ᇿ㄰-㆏]/;
 const ENGLISH_REGEX = /^[A-Za-z0-9\s\p{P}\p{S}]+$/u;
+
+const PROMPT_TH_TO_KR =
+  'You are a professional translator specialising in Thai and Korean. ' +
+  'Translate the entire message into Korean (한국어). ' +
+  'Every single word and phrase must be translated — do NOT leave any Thai or other ' +
+  'language words in the output. Output ONLY the Korean translation. No explanation, no prefix.';
+
+const PROMPT_KR_TO_TH =
+  'You are a professional translator specialising in Korean and Thai. ' +
+  'Translate the entire message into Thai (ภาษาไทย). ' +
+  'Every single word and phrase must be translated — do NOT leave any Korean or other ' +
+  'language words in the output. Output ONLY the Thai translation. No explanation, no prefix.';
+
+const PROMPT_EN_TO_KR =
+  'You are a professional translator. ' +
+  'Translate the entire message into Korean (한국어). ' +
+  'Output ONLY the Korean translation. No explanation, no prefix.';
+
+const PROMPT_EN_TO_TH =
+  'You are a professional translator. ' +
+  'Translate the entire message into Thai (ภาษาไทย). ' +
+  'Output ONLY the Thai translation. No explanation, no prefix.';
 
 /**
  * translateAll — detect language and translate 24/7
@@ -64,23 +99,17 @@ const ENGLISH_REGEX = /^[A-Za-z0-9\s\p{P}\p{S}]+$/u;
  */
 async function translateAll(text) {
   if (THAI_REGEX.test(text)) {
-    const kr = await groqTranslate(
-      text,
-      'Translate the following message entirely into Korean (한국어). Output ONLY the Korean translation. Every word must be translated — do not leave any Thai or other language words in the output. No explanation, no prefix.'
-    );
+    const kr = await groqTranslate(text, PROMPT_TH_TO_KR);
     return { kr };
   }
   if (KOREAN_REGEX.test(text)) {
-    const th = await groqTranslate(
-      text,
-      'Translate the following message entirely into Thai (ภาษาไทย). Output ONLY the Thai translation. Every word must be translated — do not leave any Korean or other language words in the output. No explanation, no prefix.'
-    );
+    const th = await groqTranslate(text, PROMPT_KR_TO_TH);
     return { th };
   }
   if (ENGLISH_REGEX.test(text) && text.trim().length > 1) {
     const [kr, th] = await Promise.all([
-      groqTranslate(text, 'Translate the following message entirely into Korean (한국어). Output ONLY the Korean translation. Every word must be translated. No explanation, no prefix.'),
-      groqTranslate(text, 'Translate the following message entirely into Thai (ภาษาไทย). Output ONLY the Thai translation. Every word must be translated. No explanation, no prefix.'),
+      groqTranslate(text, PROMPT_EN_TO_KR),
+      groqTranslate(text, PROMPT_EN_TO_TH),
     ]);
     return { kr, th };
   }
