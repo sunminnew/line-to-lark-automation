@@ -10,7 +10,7 @@ const axios = require('axios');
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = 'llama-3.3-70b-versatile'; // best quality, still free tier
+const GROQ_MODEL = 'qwen/qwen3-32b'; // best for TH/KR, free tier
 
 // ── อูจิน Identity ───────────────────────────────────────────────────────────
 const UJIN_NAME = 'อูจิน (우진)';
@@ -43,7 +43,7 @@ async function groqTranslate(text, systemPrompt) {
         { role: 'user',   content: text },
       ],
       temperature: 0.3,
-      max_tokens: 512,
+      max_tokens: 4096,
     },
     { headers: { Authorization: `Bearer ${GROQ_API_KEY}` } }
   );
