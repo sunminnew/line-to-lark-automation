@@ -91,7 +91,7 @@ async function translateAll(text) {
 async function replyMessages(replyToken, messages) {
   if (!replyToken || !messages?.length) return;
   await axios.post(
-    'https://api.line.me/v2/bot/reply',
+    'https://api.line.me/v2/bot/message/reply',
     { replyToken, messages },
     { headers: { Authorization: `Bearer ${CHANNEL_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
   );
