@@ -10,6 +10,7 @@ const axios  = require('axios');
 const CHANNEL_SECRET      = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const GROQ_API_KEY        = process.env.GROQ_API_KEY;
+const GEMINI_API_KEY      = process.env.GEMINI_API_KEY; // free tier: 1M TPM, 1,500 RPD
 
 // Primary: best quality (300K TPM, 100K TPD on free tier)
 // Fallback: fast & cheap — auto-used when primary hits daily limit (429)
@@ -55,12 +56,33 @@ async function groqTranslate(text, systemPrompt, model = GROQ_MODEL_PRIMARY) {
     return res.data.choices[0].message.content.trim();
   } catch (err) {
     // Auto-fallback: if primary hits rate/daily limit, retry with smaller model
-    if (err.response?.status === 429 && model === GROQ_MODEL_PRIMARY) {
-      console.log('[Groq] Primary model rate-limited → falling back to ' + GROQ_MODEL_FALLBACK);
+    const status = err.response?.status;
+    const isQuotaErr = status === 429 || status === 413;
+    if (isQuotaErr && model === GROQ_MODEL_PRIMARY) {
+      console.log('[Groq] Primary quota → falling back to ' + GROQ_MODEL_FALLBACK);
       return groqTranslate(text, systemPrompt, GROQ_MODEL_FALLBACK);
+    }
+    if (isQuotaErr && model === GROQ_MODEL_FALLBACK) {
+      console.log('[Groq] Both models quota-exceeded → falling back to Gemini');
+      return geminiTranslate(text, systemPrompt);
     }
     throw err;
   }
+}
+
+
+// ── Gemini Fallback (tier-3) — free: 1M TPM, 15 RPM, 1,500 RPD ──────────────
+// Activates when BOTH Groq models are rate-limited.
+async function geminiTranslate(text, systemPrompt) {
+  if (!GEMINI_API_KEY) throw new Error('[Gemini] No API key — set GEMINI_API_KEY in Render env');
+  const res = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      contents: [{ parts: [{ text: systemPrompt + '\n\n' + text }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 1500 },
+    }
+  );
+  return res.data.candidates[0].content.parts[0].text.trim();
 }
 
 // ── Language Detection ────────────────────────────────────────────────────────
