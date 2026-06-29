@@ -1,120 +1,120 @@
 /**
- * smartAdvisor.js — อูจิน (우진) Thai Legal & Business Intelligence
+ * smartAdvisor.js — อูจิน (우진) World-Class AI Intelligence Engine
  *
- * Features:
- *  1. isQuestion(text)          — detect questions/problems
- *  2. analyzeForLark(...)       — background analysis → Lark ONLY (silent)
- *  3. answerAIUrgent(...)       — Gemini Flash priority → return answer for LINE reply
+ * ██████████████████████████████████████████████████████████
+ *  13-TIER CASCADE FROM 6 AI COMPANIES — ฉลาดที่สุดในโลก
+ * ██████████████████████████████████████████████████████████
  *
- * "AI Urgent" mode: activated by keyword in LINE → bot answers IN the group
- * Regular questions: detected silently → analysis sent to Lark team room only
+ *  T01: o1-mini            OpenAI      — Advanced reasoning model
+ *  T02: GPT-4o             OpenAI      — Best general intelligence
+ *  T03: Claude 3.5 Sonnet  Anthropic   — Top reasoning + analysis
+ *  T04: Claude 3.5 Haiku   Anthropic   — Fast + very smart
+ *  T05: DeepSeek V3        DeepSeek    — Strongest open-weight model
+ *  T06: Gemini 2.0 Flash   Google      — Latest Google AI, free
+ *  T07: Gemini 1.5 Pro     Google      — Large context, deep knowledge
+ *  T08: GPT-4o-mini        OpenAI      — Fast + affordable
+ *  T09: Gemini 1.5 Flash   Google      — 1M TPM free quota
+ *  T10: Groq 70b           Groq        — Fastest inference, free
+ *  T11: Cerebras 70b       Cerebras    — 60K TPM, blazing fast, free
+ *  T12: OpenRouter 70b     OpenRouter  — Free, separate quota pool
+ *  T13: Groq 8b            Groq        — Final failsafe
+ *
+ *  6 บริษัท | 13 โมเดล | quota pool แยกกันทั้งหมด
+ *  → ระบบนี้จะไม่มีวันล้มเหลว
+ *
+ * Routing:
+ *  "AI Urgent" keyword → answerAIUrgent() → reply IN LINE (o1-mini first)
+ *  Background question → analyzeForLark() → Lark ONLY (silent)
  */
 require('dotenv').config();
-const axios = require('axios');
+const axios  = require('axios');
+const OpenAI = require('openai');
 const { sendSummaryCard } = require('./larkMessenger');
 
-// ── API Keys ───────────────────────────────────────────────────────────────────
-const GEMINI_API_KEY     = process.env.GEMINI_API_KEY;
-const GROQ_API_KEY       = process.env.GROQ_API_KEY;
-const CEREBRAS_API_KEY   = process.env.CEREBRAS_API_KEY;
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+// ── API Keys (add all to Render Environment) ───────────────────────────────────
+const OPENAI_API_KEY     = process.env.OPENAI_API_KEY;      // platform.openai.com
+const ANTHROPIC_API_KEY  = process.env.ANTHROPIC_API_KEY;   // console.anthropic.com ← NEW
+const DEEPSEEK_API_KEY   = process.env.DEEPSEEK_API_KEY;    // platform.deepseek.com ← NEW
+const GEMINI_API_KEY     = process.env.GEMINI_API_KEY;      // aistudio.google.com
+const GROQ_API_KEY       = process.env.GROQ_API_KEY;        // console.groq.com
+const CEREBRAS_API_KEY   = process.env.CEREBRAS_API_KEY;    // cerebras.ai
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;  // openrouter.ai
 
-// ── Thai Legal & Government Knowledge Base ────────────────────────────────────
+// ── Thai Legal & Government Knowledge Base (2567) ─────────────────────────────
 const THAI_LEGAL_KB = `
 === ฐานข้อมูลหน่วยงานรัฐไทยและขั้นตอนจริง (อัปเดต 2567) ===
 
 🏢 กรมพัฒนาธุรกิจการค้า (DBD) | dbd.go.th | โทร 1570
-• จดทะเบียนบริษัทจำกัด: 1-3 วันทำการ (ระบบ e-Registration) | ทุน 1 ล้าน = ค่าธรรมเนียม 5,500 บาท
+• จดทะเบียนบริษัทจำกัด: 1-3 วันทำการ (e-Registration) | ทุน 1 ล้าน = 5,500 บาท
 • จดทะเบียนห้างหุ้นส่วนจำกัด: 1-2 วัน | 1,000 บาท
 • แก้ไขข้อมูลบริษัท (กรรมการ/ที่อยู่/ทุน): 1-3 วัน | 500-1,000 บาท
 • ขั้นตอน: จองชื่อ (ฟรี) → จัดทำหนังสือบริคณห์สนธิ → ประชุมจัดตั้ง → จดทะเบียน
 • Online: dbdregistration.dbd.go.th | DBD e-Service
 
-💰 กรมสรรพากร (Revenue Dept.) | rd.go.th | โทร 1161
-• สมัคร VAT: เมื่อรายได้ >1.8 ล้าน/ปี | ฟรี | สมัครได้ทันที | ยื่น ภ.พ.01
+💰 กรมสรรพากร | rd.go.th | โทร 1161
+• สมัคร VAT: รายได้ >1.8 ล้าน/ปี | ฟรี | ยื่น ภ.พ.01
 • ภาษีนิติบุคคล: ยื่น ภ.ง.ด.50 ภายใน 150 วันหลังสิ้นรอบบัญชี
-• ภาษีหัก ณ ที่จ่าย (WHT): ยื่น ภ.ง.ด.1,3,53 ทุกเดือน ภายในวันที่ 7
-• e-Withholding Tax: หักผ่านธนาคาร อัตรา 1.5% (ลดจาก 3%)
-• ยื่น Online: efiling.rd.go.th
+• ภาษีหัก ณ ที่จ่าย: ยื่น ภ.ง.ด.1,3,53 ทุกเดือน ภายในวันที่ 7
+• e-Withholding Tax: หักผ่านธนาคาร อัตรา 1.5%
 
-🚢 กรมศุลกากร (Customs) | customs.go.th | โทร 1164
-• ลงทะเบียนผู้นำเข้า-ส่งออก: 1-3 วัน | ฟรี | ต้องมีหนังสือรับรองบริษัท+บัตรประชาชน
-• ตรวจสอบ HS Code และอัตราภาษี: customs.go.th/page.php?id=2
-• สินค้าต้องขออนุญาตพิเศษ: อาหาร(อย.) ยา(อย.) อาวุธ(กรมการปกครอง) สัตว์(กรมปศุสัตว์)
-• ภาษีนำเข้าโดยเฉลี่ย: 0-30% ขึ้นกับประเภทสินค้า | บาง FTA ลดเหลือ 0%
-• สินค้าติดศุลกากร: ติดต่อ 1164 และเตรียม Invoice+Packing List+B/L+Certificate
+🚢 กรมศุลกากร | customs.go.th | โทร 1164
+• ลงทะเบียนผู้นำเข้า-ส่งออก: 1-3 วัน | ฟรี
+• สินค้าต้องขออนุญาตพิเศษ: อาหาร(อย.) ยา(อย.) อาวุธ(กรมการปกครอง)
+• ภาษีนำเข้า: 0-30% ตาม HS Code | FTA บางประเทศ = 0%
+• สินค้าติดศุลกากร: เตรียม Invoice+Packing List+B/L → โทร 1164
 
-👷 กรมการจัดหางาน (DOE) | doe.go.th | โทร 1506
-• Work Permit (ต่างชาติ): 7-30 วัน | 750-3,000 บาท/ปี | ต่ออายุทุกปี
-• เงื่อนไข WP: Non-B Visa + สัญญาจ้างงาน + บริษัทมีทุนจด ≥2 ล้านบาท/คน
-• สัดส่วน: คนไทย 4 คน : ต่างชาติ 1 คน (บางกิจการยกเว้น)
-• แรงงาน MOU (พม่า/กัมพูชา/ลาว/เวียดนาม): OSS 1 stop ที่กรมจัดหางาน | 3,000-8,000 บาท
-• ตรวจสอบสถานะ: e-workpermit.doe.go.th
+👷 กรมการจัดหางาน | doe.go.th | โทร 1506
+• Work Permit ต่างชาติ: 7-30 วัน | 750-3,000 บาท/ปี
+• เงื่อนไข: Non-B Visa + สัญญาจ้างงาน + ทุนจด ≥2 ล้าน/คน
+• สัดส่วน: คนไทย 4 : ต่างชาติ 1
+• แรงงาน MOU: OSS | 3,000-8,000 บาท
 
-🛂 สำนักงานตรวจคนเข้าเมือง (Immigration) | immigration.go.th | โทร 0-2141-9889
-• Non-B Visa (Business/Work): ต่ออายุที่ตม. | 1,900 บาท | ทุก 1 ปี
-• เอกสาร: หนังสือรับรองบริษัท + สัญญาจ้าง + Work Permit + ทะเบียนภาษี
-• ขยายพำนัก: ยื่นก่อนวีซ่าหมด 30 วัน | 1,900 บาท
-• Smart Visa (BOI): 4 ปี | ไม่ต้องมี Work Permit | เฉพาะกิจการเป้าหมาย BOI
-• 90-day Report: แจ้งทุก 90 วัน ออนไลน์ที่ tm47.immigration.go.th | ฟรี
+🛂 ตรวจคนเข้าเมือง | immigration.go.th | โทร 0-2141-9889
+• Non-B Visa: 1,900 บาท | ทุก 1 ปี
+• Smart Visa (BOI): 4 ปี | ไม่ต้อง Work Permit
+• 90-day Report: tm47.immigration.go.th | ฟรี
 
 💊 อย./FDA | fda.moph.go.th | โทร 1556
-• อาหาร: แจ้งรายละเอียดอาหาร (อ.1) 1-3 วัน ฟรี | ขอ อ.9 (ขออนุญาต) 30-60 วัน 1,000-5,000 บาท
-• เครื่องสำอาง: แจ้งจดแจ้ง 1-3 วัน | 200-1,000 บาท | เว็บ cosmetic.fda.moph.go.th
-• ยา: ขึ้นทะเบียน 3-24 เดือน | 2,000-10,000 บาท | ต้องมี GMP
-• อาหารเสริม (OTOP): ฉลาก+ขึ้นทะเบียน 15-30 วัน | 500-1,000 บาท
-• นำเข้าอาหาร/ยา: ต้องมีใบอนุญาต อย.ไทย ก่อนผ่านด่านศุลกากร
+• อาหาร: 1-60 วัน | ฟรี-5,000 บาท
+• เครื่องสำอาง: 1-3 วัน | 200-1,000 บาท
+• ยา: 3-24 เดือน | 2,000-10,000 บาท
 
-™️ กรมทรัพย์สินทางปัญญา (DIP) | ipthailand.go.th | โทร 0-2547-4688
-• เครื่องหมายการค้า: 18-24 เดือน | 500 บาท/หมวด (35 หมวด) | ต่ออายุทุก 10 ปี
-• ลิขสิทธิ์: เกิดอัตโนมัติเมื่อสร้างผลงาน | แจ้งข้อมูลที่ DIP ฟรี | ไม่ต้องจดทะเบียน
-• สิทธิบัตรการประดิษฐ์: 3-5 ปี | 2,000-10,000 บาท | คุ้มครอง 20 ปี
-• สิทธิบัตรการออกแบบ: 6-12 เดือน | 500 บาท | คุ้มครอง 10 ปี
+™️ กรมทรัพย์สินทางปัญญา | ipthailand.go.th | โทร 0-2547-4688
+• เครื่องหมายการค้า: 18-24 เดือน | 500 บาท/หมวด | ต่ออายุทุก 10 ปี
+• สิทธิบัตร: 3-5 ปี | 2,000-10,000 บาท | คุ้มครอง 20 ปี
 
-🏭 กรมโรงงานอุตสาหกรรม (DIW) | diw.go.th | โทร 0-2202-4000
-• โรงงาน จ.3 (>50 แรงม้า): ขอ ร.ง.4 ใช้เวลา 30-90 วัน | ค่าธรรมเนียมตามขนาด
-• โรงงาน จ.2 (5-50 แรงม้า): แจ้งอุตสาหกรรมจังหวัด | ง่ายกว่า
-• โรงงาน จ.1 (<5 แรงม้า): แจ้งอำเภอ | ไม่ต้องขออนุญาต
-• EIA: โรงงานขนาดใหญ่ต้องทำ EIA ก่อน ใช้เวลา 6-12 เดือน
+💼 BOI | boi.go.th | โทร 0-2553-8111
+• ยกเว้น/ลดภาษีนิติบุคคล 3-8 ปี | ยกเว้นอากรเครื่องจักร
+• ต่างชาติถือหุ้น 100% | Smart Visa 4 ปี
+• กิจการเป้าหมาย: ดิจิทัล EV อาหาร การแพทย์ เทคโนโลยี
+• ขั้นตอน: ยื่นคำขอ → ประชุม BOI → ออกบัตรส่งเสริม | 30-60 วัน ฟรี
 
-💼 สำนักงานคณะกรรมการส่งเสริมการลงทุน (BOI) | boi.go.th | โทร 0-2553-8111
-• ยกเว้น/ลดภาษีนิติบุคคล 3-8 ปี | ยกเว้นอากรขาเข้าเครื่องจักร
-• ต่างชาติถือหุ้น 100% ได้ (ไม่ต้องมีหุ้นส่วนไทย)
-• Smart Visa + Non-B 4 ปี
-• กิจการเป้าหมาย: ดิจิทัล เทคโนโลยี EV อาหาร เกษตรแปรรูป การแพทย์
-• ขั้นตอน: ยื่นคำขอ → ประชุม BOI → ออกบัตรส่งเสริม | 30-60 วัน | ฟรี
+👥 กรมสวัสดิการแรงงาน | labour.go.th | โทร 1546
+• ค่าแรงขั้นต่ำ 2567: 300-400 บาท/วัน (กรุงเทพฯ 400 บาท)
+• OT: 1.5-3 เท่า | ลาพักร้อน: 6 วัน/ปี (ทำงานครบ 1 ปี)
 
-👥 กรมสวัสดิการและคุ้มครองแรงงาน | labour.go.th | โทร 1546
-• แจ้งขึ้นทะเบียนนายจ้าง: ฟรี | ทันที | ที่กรมแรงงานหรือออนไลน์
-• ค่าแรงขั้นต่ำ 2567: 300-400 บาท/วัน (แตกต่างตามจังหวัด กรุงเทพฯ 400 บาท)
-• เวลาทำงาน: ≤8 ชม./วัน ≤48 ชม./สัปดาห์ | OT: 1.5-3 เท่า
-• ลาพักร้อน: 6 วัน/ปี (ทำงาน 1 ปีขึ้นไป)
-• สัญญาจ้าง: ไม่ต้องจดทะเบียน แต่ควรมีเป็นลายลักษณ์อักษร
+🛡️ ประกันสังคม | sso.go.th | โทร 1506
+• เงินสมทบ: นายจ้าง 5% + ลูกจ้าง 5% | สูงสุด 750 บาท/คน/เดือน
+• ขึ้นทะเบียน: ฟรี | ภายใน 30 วันที่มีลูกจ้าง
 
-🛡️ สำนักงานประกันสังคม (SSO) | sso.go.th | โทร 1506
-• ขึ้นทะเบียนนายจ้าง+ลูกจ้าง: ฟรี | ภายใน 30 วันที่มีลูกจ้าง
-• เงินสมทบ: นายจ้าง 5% + ลูกจ้าง 5% ของเงินเดือน | สูงสุด 750 บาท/เดือน/คน
-• สิทธิประกันสังคม: รักษาพยาบาล ทุพพลภาพ ชดเชยว่างงาน เกษียณ คลอดบุตร
-• ยื่นเงินสมทบ: ทุกเดือน ภายในวันที่ 15 | e-Payment ได้
-
-🛒 สคบ. (คุ้มครองผู้บริโภค) | ocpb.go.th | โทร 1166
-• ร้องเรียนสินค้า/บริการไม่มาตรฐาน: โทร 1166 หรือยื่นออนไลน์
-• โฆษณาเกินจริง: โทษปรับ 50,000-500,000 บาท + ถูกดำเนินคดี
-• e-Commerce: สิทธิคืนสินค้าภายใน 7 วัน | ผู้ขายต้องชดเชย
-• สัญญาผู้บริโภค: มีแบบมาตรฐานบังคับสำหรับอสังหา รถ ประกัน
+🛒 สคบ. | ocpb.go.th | โทร 1166
+• ร้องเรียนสินค้าไม่มาตรฐาน | โฆษณาเกินจริง: ปรับ 50,000-500,000 บาท
+• e-Commerce: สิทธิคืนสินค้าภายใน 7 วัน
 
 🏘️ กรมที่ดิน | dol.go.th | โทร 0-2141-5555
-• โอนกรรมสิทธิ์ที่ดิน: ค่าธรรมเนียม 2% + ภาษีธุรกิจเฉพาะ 3.3% หรือ ภาษีเงินได้ (แล้วแต่กรณี)
-• ต่างชาติซื้อคอนโด: ได้ไม่เกิน 49% ของพื้นที่โครงการ
-• เช่าที่ดิน: สัญญาเช่าระยะยาว 30+30 ปี (ต่างชาติใช้ได้)
+• โอนกรรมสิทธิ์: ค่าธรรมเนียม 2% + ภาษีธุรกิจเฉพาะ 3.3%
+• ต่างชาติซื้อคอนโด: ไม่เกิน 49% ของพื้นที่โครงการ
+
+🏭 กรมโรงงานอุตสาหกรรม | diw.go.th | โทร 0-2202-4000
+• ใบอนุญาตโรงงาน จ.3: 30-90 วัน | จ.1 (<5 แรงม้า): แจ้งอำเภอ
 
 === วิธีแก้ปัญหาธุรกิจทั่วไป ===
-• ลูกค้าไม่ชำระเงิน: ส่งหนังสือทวงถามก่อน → ฟ้องศาลแขวง (<300,000 บาท ไม่ต้องมีทนาย)
-• พนักงานลาออกไม่ได้รับค่าชดเชย: แจ้งกรมแรงงาน 1546 | ฟรี | ไม่เกิน 30 วัน
-• สินค้าติดด่านศุลกากร: เตรียม Invoice+Packing List+B/L → ติดต่อ 1164
-• ปัญหาภาษีย้อนหลัง: ยื่นอุทธรณ์ต่อคณะกรรมการพิจารณาอุทธรณ์ภายใน 30 วัน
-• พิพาทสัญญา: ระงับข้อพิพาท (Mediation) ที่ สคร. ก่อน ประหยัดกว่าฟ้องศาล
-• ถูกละเมิดเครื่องหมายการค้า: แจ้งความ + แจ้ง DIP + ฟ้องแพ่ง/อาญา
+• ลูกค้าไม่ชำระเงิน → ส่งหนังสือทวงถาม → ฟ้องศาลแขวง (<300K บาท ไม่ต้องมีทนาย)
+• พนักงานไม่ได้ค่าชดเชย → กรมแรงงาน 1546 | ฟรี
+• สินค้าติดด่านศุลกากร → เตรียมเอกสาร → โทร 1164
+• ปัญหาภาษีย้อนหลัง → อุทธรณ์ภายใน 30 วัน
+• พิพาทสัญญา → ไกล่เกลี่ยที่ สคร. ก่อน ประหยัดกว่าฟ้องศาล
+• ถูกละเมิดเครื่องหมายการค้า → แจ้งความ + แจ้ง DIP + ฟ้องแพ่ง/อาญา
 `;
 
 // ── Question Detector ─────────────────────────────────────────────────────────
@@ -127,120 +127,183 @@ const Q_PATTERNS = [
   /how\s+to/, /how\s+much/, /where\s+to/, /what\s+is/, /can\s+i/,
 ];
 function isQuestion(text) {
-  const t = text.toLowerCase();
-  return Q_PATTERNS.some(p => p.test(t)) && text.trim().length > 5;
+  return Q_PATTERNS.some(p=>p.test(text.toLowerCase())) && text.trim().length > 5;
 }
 
-// ── AI Tier Callers ───────────────────────────────────────────────────────────
+// ── AI Tier Callers ────────────────────────────────────────────────────────────
 function isQuotaErr(e){ const s=e.response?.status; return s===429||s===413||s===503; }
 
-const callGemini=(sys,usr,model='gemini-1.5-flash')=>{
-  if(!GEMINI_API_KEY) return Promise.reject(new Error('No GEMINI_API_KEY'));
-  return axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-    {contents:[{parts:[{text:sys+'\n\n'+usr}]}],generationConfig:{temperature:0.2,maxOutputTokens:2000}},{timeout:28000})
-    .then(r=>r.data.candidates[0].content.parts[0].text.trim());
-};
-const callGroq=(sys,usr,model)=>axios.post('https://api.groq.com/openai/v1/chat/completions',
-  {model,messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.2,max_tokens:2000},
-  {headers:{Authorization:`Bearer ${GROQ_API_KEY}`},timeout:25000}).then(r=>r.data.choices[0].message.content.trim());
-const callCerebras=(sys,usr)=>{
-  if(!CEREBRAS_API_KEY) return Promise.reject(new Error('No CEREBRAS_API_KEY'));
-  return axios.post('https://api.cerebras.ai/v1/chat/completions',
-    {model:'llama-3.3-70b',messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.2,max_tokens:2000},
-    {headers:{Authorization:`Bearer ${CEREBRAS_API_KEY}`},timeout:25000}).then(r=>r.data.choices[0].message.content.trim());
-};
-const callOpenRouter=(sys,usr)=>{
-  if(!OPENROUTER_API_KEY) return Promise.reject(new Error('No OPENROUTER_API_KEY'));
-  return axios.post('https://openrouter.ai/api/v1/chat/completions',
-    {model:'meta-llama/llama-3.3-70b-instruct:free',messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.2,max_tokens:2000},
-    {headers:{Authorization:`Bearer ${OPENROUTER_API_KEY}`,'HTTP-Referer':'https://wisdom-ujin.onrender.com','X-Title':'Wisdom อูจิน AI'},timeout:25000})
-    .then(r=>r.data.choices[0].message.content.trim());
+// T01-T02, T08: OpenAI (o1-mini, GPT-4o, GPT-4o-mini)
+const callOpenAI = (sys, usr, model) => {
+  if (!OPENAI_API_KEY) return Promise.reject(new Error('No OPENAI_API_KEY'));
+  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+  // o1 models: no system role, no temperature
+  const isO1 = model.startsWith('o1');
+  const messages = isO1
+    ? [{ role:'user', content: sys + '\n\n' + usr }]
+    : [{ role:'system', content:sys }, { role:'user', content:usr }];
+  const params = { model, messages, max_tokens: isO1 ? undefined : 2000 };
+  if (isO1) params.max_completion_tokens = 2000;
+  else params.temperature = 0.2;
+  return openai.chat.completions.create(params)
+    .then(r => r.choices[0].message.content.trim());
 };
 
-// AI Urgent: Gemini Flash first (smartest + fastest) → full cascade fallback
+// T03-T04: Anthropic Claude (3.5 Sonnet / 3.5 Haiku)
+const callClaude = (sys, usr, model) => {
+  if (!ANTHROPIC_API_KEY) return Promise.reject(new Error('No ANTHROPIC_API_KEY'));
+  return axios.post('https://api.anthropic.com/v1/messages',
+    { model, max_tokens:2000, temperature:0.2,
+      system: sys, messages:[{ role:'user', content:usr }] },
+    { headers:{ 'x-api-key':ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01',
+        'content-type':'application/json' }, timeout:30000 }
+  ).then(r => r.data.content[0].text.trim());
+};
+
+// T05: DeepSeek V3 (OpenAI-compatible, very capable)
+const callDeepSeek = (sys, usr) => {
+  if (!DEEPSEEK_API_KEY) return Promise.reject(new Error('No DEEPSEEK_API_KEY'));
+  return axios.post('https://api.deepseek.com/v1/chat/completions',
+    { model:'deepseek-chat',
+      messages:[{role:'system',content:sys},{role:'user',content:usr}],
+      temperature:0.2, max_tokens:2000 },
+    { headers:{ Authorization:`Bearer ${DEEPSEEK_API_KEY}` }, timeout:25000 }
+  ).then(r => r.data.choices[0].message.content.trim());
+};
+
+// T06-T07, T09: Google Gemini
+const callGemini = (sys, usr, model) => {
+  if (!GEMINI_API_KEY) return Promise.reject(new Error('No GEMINI_API_KEY'));
+  return axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+    { contents:[{parts:[{text:sys+'\n\n'+usr}]}],
+      generationConfig:{ temperature:0.2, maxOutputTokens:2000 } },
+    { timeout:28000 }
+  ).then(r => r.data.candidates[0].content.parts[0].text.trim());
+};
+
+// T10: Groq (llama-3.3-70b / mixtral / 8b)
+const callGroq = (sys, usr, model) =>
+  axios.post('https://api.groq.com/openai/v1/chat/completions',
+    { model, messages:[{role:'system',content:sys},{role:'user',content:usr}],
+      temperature:0.2, max_tokens:2000 },
+    { headers:{ Authorization:`Bearer ${GROQ_API_KEY}` }, timeout:25000 }
+  ).then(r => r.data.choices[0].message.content.trim());
+
+// T11: Cerebras (llama-3.3-70b, 60K TPM)
+const callCerebras = (sys, usr) => {
+  if (!CEREBRAS_API_KEY) return Promise.reject(new Error('No CEREBRAS_API_KEY'));
+  return axios.post('https://api.cerebras.ai/v1/chat/completions',
+    { model:'llama-3.3-70b',
+      messages:[{role:'system',content:sys},{role:'user',content:usr}],
+      temperature:0.2, max_tokens:2000 },
+    { headers:{ Authorization:`Bearer ${CEREBRAS_API_KEY}` }, timeout:25000 }
+  ).then(r => r.data.choices[0].message.content.trim());
+};
+
+// T12: OpenRouter (free llama-3.3-70b)
+const callOpenRouter = (sys, usr) => {
+  if (!OPENROUTER_API_KEY) return Promise.reject(new Error('No OPENROUTER_API_KEY'));
+  return axios.post('https://openrouter.ai/api/v1/chat/completions',
+    { model:'meta-llama/llama-3.3-70b-instruct:free',
+      messages:[{role:'system',content:sys},{role:'user',content:usr}],
+      temperature:0.2, max_tokens:2000 },
+    { headers:{ Authorization:`Bearer ${OPENROUTER_API_KEY}`,
+        'HTTP-Referer':'https://wisdom-ujin.onrender.com',
+        'X-Title':'Wisdom อูจิน AI — World-Class Bot' },
+      timeout:25000 }
+  ).then(r => r.data.choices[0].message.content.trim());
+};
+
+// ── 13-Tier World-Class Cascade ────────────────────────────────────────────────
 async function aiUrgentCascade(sys, usr) {
   const tiers = [
-    {name:'Gemini-2.0-Flash',fn:()=>callGemini(sys,usr,'gemini-2.0-flash')},
-    {name:'Gemini-1.5-Flash',fn:()=>callGemini(sys,usr,'gemini-1.5-flash')},
-    {name:'Groq-70b',        fn:()=>callGroq(sys,usr,'llama-3.3-70b-versatile')},
-    {name:'Cerebras-70b',    fn:()=>callCerebras(sys,usr)},
-    {name:'OpenRouter-70b',  fn:()=>callOpenRouter(sys,usr)},
-    {name:'Groq-Mixtral',   fn:()=>callGroq(sys,usr,'mixtral-8x7b-32768')},
-    {name:'Groq-8b',         fn:()=>callGroq(sys,usr,'llama-3.1-8b-instant')},
+    { name:'T01:o1-mini',           fn:()=>callOpenAI(sys, usr, 'o1-mini') },
+    { name:'T02:GPT-4o',            fn:()=>callOpenAI(sys, usr, 'gpt-4o') },
+    { name:'T03:Claude-3.5-Sonnet', fn:()=>callClaude(sys, usr, 'claude-3-5-sonnet-20241022') },
+    { name:'T04:Claude-3.5-Haiku',  fn:()=>callClaude(sys, usr, 'claude-3-5-haiku-20241022') },
+    { name:'T05:DeepSeek-V3',       fn:()=>callDeepSeek(sys, usr) },
+    { name:'T06:Gemini-2.0-Flash',  fn:()=>callGemini(sys, usr, 'gemini-2.0-flash') },
+    { name:'T07:Gemini-1.5-Pro',    fn:()=>callGemini(sys, usr, 'gemini-1.5-pro') },
+    { name:'T08:GPT-4o-mini',       fn:()=>callOpenAI(sys, usr, 'gpt-4o-mini') },
+    { name:'T09:Gemini-1.5-Flash',  fn:()=>callGemini(sys, usr, 'gemini-1.5-flash') },
+    { name:'T10:Groq-70b',          fn:()=>callGroq(sys, usr, 'llama-3.3-70b-versatile') },
+    { name:'T11:Cerebras-70b',      fn:()=>callCerebras(sys, usr) },
+    { name:'T12:OpenRouter-70b',    fn:()=>callOpenRouter(sys, usr) },
+    { name:'T13:Groq-8b',           fn:()=>callGroq(sys, usr, 'llama-3.1-8b-instant') },
   ];
-  for(const t of tiers){
-    try{
-      const out=await t.fn();
-      if(out&&out.length>20){console.log(`[SmartAdvisor] ✓ ${t.name}`);return out;}
-    }catch(e){
-      const r=isQuotaErr(e)?`quota(${e.response?.status})`:e.message?.startsWith('No ')?'no key':e.message?.slice(0,40);
+
+  for (const t of tiers) {
+    try {
+      const out = await t.fn();
+      if (out && out.trim().length > 20) {
+        console.log(`[SmartAdvisor] ✓ ${t.name}`);
+        return out;
+      }
+      console.log(`[SmartAdvisor] ${t.name} empty → next`);
+    } catch(e) {
+      const r = isQuotaErr(e) ? `quota(${e.response?.status})`
+              : e.message?.startsWith('No ') ? 'no key'
+              : e.message?.slice(0, 50);
       console.log(`[SmartAdvisor] ${t.name} ${r} → next`);
     }
   }
-  throw new Error('All advisor AI tiers failed');
+  throw new Error('[SmartAdvisor] All 13 tiers failed');
 }
 
 // ── System Prompts ─────────────────────────────────────────────────────────────
-const ADVISOR_SYSTEM_PROMPT = `คุณคือ อูจิน (우진) ที่ปรึกษาธุรกิจและกฎหมายไทยผู้เชี่ยวชาญของ Wisdom International
-ที่มีความรู้ลึกและทันสมัยในด้านกฎหมาย ราชการ การแก้ปัญหาธุรกิจ และการค้าระหว่างประเทศ
+const ADVISOR_SYSTEM_PROMPT = `คุณคือ อูจิน (우진) ที่ปรึกษาธุรกิจและกฎหมายไทยระดับ World-Class ของ Wisdom International
+ที่มีความรู้ลึก ทันสมัย และแม่นยำในด้านกฎหมายไทย ราชการ การแก้ปัญหาธุรกิจ และการค้าระหว่างไทย-เกาหลี
 
 ${THAI_LEGAL_KB}
 
-เมื่อได้รับคำถามหรือปัญหา ให้:
-1. 🔍 วิเคราะห์ปัญหาให้ชัดเจน — ระบุสาเหตุที่แท้จริง
-2. 📋 บอกขั้นตอนที่ต้องทำ — เรียงลำดับ 1,2,3 ชัดเจน
-3. 🏛️ ระบุหน่วยงานรับผิดชอบ — ชื่อกรม เบอร์โทร เว็บไซต์
-4. ⏱️ บอกระยะเวลาและค่าใช้จ่ายจริง — อย่าประมาณเกินจริง
-5. 💡 เสนอโซลูชันหลายทาง — ถ้ามีทางเลือกที่ดีกว่า บอกด้วย
-6. ⚠️ เตือนข้อควรระวัง — กับดักทางกฎหมาย/ค่าใช้จ่ายแอบแฝง
-7. 🇰🇷 สรุปสั้นๆ เป็นภาษาเกาหลี 1-2 ประโยคท้ายสุด
+เมื่อได้รับคำถามหรือปัญหา:
+1. 🔍 วิเคราะห์ปัญหา — ระบุสาเหตุที่แท้จริง ไม่ใช่แค่อาการ
+2. 📋 ขั้นตอนที่ต้องทำ — เรียงลำดับ 1,2,3 ชัดเจน ทำได้ทันที
+3. 🏛️ หน่วยงานรับผิดชอบ — ชื่อกรม เบอร์โทร เว็บไซต์
+4. ⏱️ ระยะเวลาและค่าใช้จ่ายจริง — ข้อมูลเฉพาะเจาะจง ไม่กำกวม
+5. 💡 โซลูชันหลายทาง — ทางเลือกที่ดีที่สุด ประหยัดที่สุด เร็วที่สุด
+6. ⚠️ ข้อควรระวัง — กับดักทางกฎหมาย ค่าใช้จ่ายแอบแฝง ความเสี่ยง
+7. 🇰🇷 สรุปภาษาเกาหลี — 1-2 ประโยคท้ายสุดสำหรับทีมเกาหลี
 
-กฎเหล็ก: ห้ามบอกว่า "ไม่ทราบ" — ถ้าไม่แน่ใจให้แนะนำแหล่งข้อมูลเพิ่มเติม
-ตอบเป็นภาษาไทยเป็นหลัก กระชับ ใช้งานได้จริง ไม่เกิน 400 คำ`;
+กฎเหล็ก:
+• ห้ามบอกว่า "ไม่ทราบ" — ให้แนะนำแหล่งข้อมูลเพิ่มเติมแทน
+• ใช้ข้อมูลจริงจากฐานข้อมูลด้านบน ไม่คาดเดา
+• ตอบภาษาไทยเป็นหลัก กระชับ ใช้งานได้จริง ไม่เกิน 400 คำ`;
 
-const LARK_ANALYSIS_PROMPT = `คุณคือ อูจิน (우진) นักวิเคราะห์ธุรกิจของ Wisdom International
+const LARK_ANALYSIS_PROMPT = `คุณคือ อูจิน (우진) นักวิเคราะห์ธุรกิจ World-Class ของ Wisdom International
 
 ${THAI_LEGAL_KB}
 
-วิเคราะห์ข้อความต่อไปนี้ว่าเป็นปัญหา/คำถามด้านใด แล้วให้คำแนะนำที่ใช้งานได้จริงสำหรับทีม:
+วิเคราะห์ข้อความต่อไปนี้ แล้วให้คำแนะนำที่ใช้งานได้จริงสำหรับทีม:
 
-📌 ประเด็นที่ตรวจพบ: [ระบุชัดเจน]
-🏛️ หน่วยงานที่เกี่ยวข้อง: [ชื่อกรม + เบอร์โทร]
-📋 ขั้นตอนแนะนำ: [เรียงลำดับสั้นๆ]
-⏱️ ระยะเวลา/ค่าใช้จ่าย: [ข้อมูลจริง]
-💡 ข้อควรระวัง: [กับดักหรือความเสี่ยง]
+📌 ประเด็น: [ระบุชัดเจน]
+🏛️ หน่วยงาน: [ชื่อกรม + เบอร์]
+📋 ขั้นตอน: [เรียงลำดับ]
+⏱️ เวลา/ค่าใช้จ่าย: [ข้อมูลจริง]
+💡 ข้อควรระวัง: [ความเสี่ยง]
 
-ตอบสั้น ตรงประเด็น เป็นภาษาไทย`;
+ตอบสั้น ตรงประเด็น ภาษาไทย`;
 
 // ── Public API ─────────────────────────────────────────────────────────────────
-
-/**
- * answerAIUrgent — called when AI Urgent session is active
- * Uses Gemini Flash as primary model for maximum intelligence
- * Returns answer string for LINE reply
- */
-async function answerAIUrgent(text, senderName = 'ลูกค้า') {
-  const userMsg = `${senderName} ถามว่า: ${text}`;
-  return aiUrgentCascade(ADVISOR_SYSTEM_PROMPT, userMsg);
+async function answerAIUrgent(text, senderName='ลูกค้า') {
+  return aiUrgentCascade(ADVISOR_SYSTEM_PROMPT, `${senderName} ถามว่า: ${text}`);
 }
 
-/**
- * analyzeForLark — background question analysis, sends result to Lark ONLY
- * Does NOT reply in LINE — silent background intelligence
- */
-async function analyzeForLark(text, senderName = 'ผู้ใช้', groupId = 'LINE') {
+async function analyzeForLark(text, senderName='ผู้ใช้', groupId='LINE') {
   try {
-    console.log(`[SmartAdvisor] analyzing question from ${senderName}`);
-    const userMsg = `ข้อความจาก ${senderName} ในกลุ่ม ${groupId}:\n"${text}"`;
-    const analysis = await aiUrgentCascade(LARK_ANALYSIS_PROMPT, userMsg);
-    const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    const analysis = await aiUrgentCascade(
+      LARK_ANALYSIS_PROMPT,
+      `ข้อความจาก ${senderName} ในกลุ่ม ${groupId}:\n"${text}"`
+    );
+    const now = new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok'});
     await sendSummaryCard(
       `🧠 อูจินวิเคราะห์คำถาม — ${now}`,
-      `❓ **จาก:** ${senderName}\n💬 **คำถาม:** ${text}\n\n${analysis}\n\n> 🤖 วิเคราะห์โดย อูจิน (우진) AI · Wisdom International`
+      `❓ **จาก:** ${senderName}\n💬 **คำถาม:** ${text}\n\n${analysis}\n\n> 🌍 วิเคราะห์โดย อูจิน (우진) 13-Tier World-Class AI · Wisdom International`
     );
-    console.log('[SmartAdvisor] analysis sent to Lark ✓');
-  } catch (err) {
-    console.error('[SmartAdvisor] analyzeForLark failed:', err.message);
+    console.log('[SmartAdvisor] ✓ analysis sent to Lark');
+  } catch(err) {
+    console.error('[SmartAdvisor] analyzeForLark failed:',err.message);
   }
 }
 
