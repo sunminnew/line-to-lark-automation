@@ -13,7 +13,7 @@ const { isWorkingDay }                    = require('./holidays');
 const { addMessage, flushMessages }       = require('./messageStore');
 const {
   verifySignature, translateAll,
-  replyMessages, getSenderName, OOO_MESSAGE,
+  replyMessages, getSenderName,
 } = require('./lineHandler');
 const { startCronJob, runPipeline }     = require('./cronJob');
 const { startKeepAlive }                = require('./keepAlive');
@@ -26,17 +26,6 @@ const PORT = process.env.PORT ?? 3000;
 
 const LINE_TOKEN  = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const WEBHOOK_URL = 'https://line-to-lark-automation.onrender.com/webhook';
-
-// ── OOO deduplication — send once per calendar day per source ─────────────────
-// Key: sourceId  Value: Bangkok date string 'YYYY-MM-DD'
-const oooSentMap = new Map();
-
-function shouldSendOOO(sourceId) {
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
-  if (oooSentMap.get(sourceId) === today) return false;
-  oooSentMap.set(sourceId, today);
-  return true;
-}
 
 // ── LINE 5,000-char limit guard ───────────────────────────────────────────────
 // LINE rejects text messages longer than 5,000 chars.
@@ -229,10 +218,6 @@ app.post('/webhook', async (req, res) => {
       // Split long translations into multiple bubbles (LINE max 5,000 chars/msg)
       if (translations?.kr) replies.push(...toLineMessages('KR: ', translations.kr));
       if (translations?.th) replies.push(...toLineMessages('TH: ', translations.th));
-      // OOO — send only ONCE per day per source
-      if ((!inBizHours || !isWorking) && shouldSendOOO(sourceId)) {
-        replies.push({ type: 'text', text: OOO_MESSAGE });
-      }
       if (replies.length) {
         try {
           // LINE allows max 5 messages per reply token
