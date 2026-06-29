@@ -195,10 +195,15 @@ app.post('/webhook', async (req,res) => {
       // Answer with Gemini Flash (smartest model)
       try {
         console.log(`[AI Urgent] answering "${text.slice(0,50)}..."`);
-        const answer = await withTimeout(answerAIUrgent(text, senderName), 28000, 'AI Urgent');
+        const result = await withTimeout(answerAIUrgent(text, senderName), 28000, 'AI Urgent');
+        const answerText = (result && typeof result === 'object') ? result.text : result;
+        const imageUrl   = (result && typeof result === 'object') ? result.imageUrl : null;
 
-        // Reply in LINE
-        const lineReplies = toLineMessages('🤖 อูจิน: ', answer);
+        // Reply in LINE (text + optional image)
+        const lineReplies = toLineMessages('🤖 อูจิน: ', answerText);
+        if (imageUrl) {
+          lineReplies.push({ type:'image', originalContentUrl:imageUrl, previewImageUrl:imageUrl });
+        }
         await replyMessages(event.replyToken, lineReplies.slice(0,5))
           .catch(e=>console.error('[AI Urgent] LINE reply failed:',e.message));
 
@@ -206,7 +211,7 @@ app.post('/webhook', async (req,res) => {
         const now = new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok'});
         sendSummaryCard(
           `🤖 AI Urgent — ${senderName} · ${now}`,
-          `❓ **คำถาม:** ${text}\n\n💡 **อูจินตอบ:**\n${answer}\n\n> 🤖 ตอบโดย Gemini Flash · Wisdom International`
+          `❓ **คำถาม:** ${text}\n\n💡 **อูจินตอบ:**\n${answerText}${imageUrl?'\n\n🎨 [ภาพ: '+imageUrl.slice(0,60)+'...]':''}\n\n> 🤖 อูจิน Elite Brain v3 | Wisdom International`
         ).catch(e=>console.error('[AI Urgent] Lark send failed:',e.message));
 
       } catch(err) {
