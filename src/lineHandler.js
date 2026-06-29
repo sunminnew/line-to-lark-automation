@@ -48,7 +48,7 @@ async function groqTranslate(text, systemPrompt, model = GROQ_MODEL_PRIMARY) {
           { role: 'user',   content: text },
         ],
         temperature: 0.1,
-        max_tokens: 4096,
+        max_tokens: 8192,
       },
       { headers: { Authorization: `Bearer ${GROQ_API_KEY}` } }
     );
