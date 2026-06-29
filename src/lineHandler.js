@@ -48,7 +48,7 @@ async function groqTranslate(text, systemPrompt, model = GROQ_MODEL_PRIMARY) {
           { role: 'user',   content: text },
         ],
         temperature: 0.1,
-        max_tokens: 8192,
+        max_tokens: 1500,
       },
       { headers: { Authorization: `Bearer ${GROQ_API_KEY}` } }
     );
@@ -97,7 +97,14 @@ const PROMPT_EN_TO_TH =
  * English → Korean + Thai (parallel)
  * @returns { kr?, th? } or null if no translation needed
  */
-async function translateAll(text) {
+// ── Input cap — Groq free tier: 6,000 TPM (input+output tokens).
+// Cap input at 3,000 chars (~1,200 tokens) + max_tokens 1,500 = ~2,700 total → safely under limit.
+const MAX_INPUT_CHARS = 3000;
+
+async function translateAll(rawText) {
+  const text = rawText.length > MAX_INPUT_CHARS
+    ? rawText.slice(0, MAX_INPUT_CHARS) + '\n…(ข้อความยาวเกิน ระบบแปลเฉพาะส่วนแรก)'
+    : rawText;
   if (THAI_REGEX.test(text)) {
     const kr = await groqTranslate(text, PROMPT_TH_TO_KR);
     return { kr };
