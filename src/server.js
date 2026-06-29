@@ -40,7 +40,8 @@ const aiUrgentSessions = new Map();
 const AI_URGENT_TTL = 30 * 60 * 1000; // 30 minutes
 
 function isAIUrgentTrigger(text) {
-  return /^ai\s*urgent$/i.test(text.trim());
+  const t = text.trim();
+  return /^(ai\s*urgent|ai\s*agent|อูจิน|ujin\s*help|@อูจิน|หาอูจิน|เรียกอูจิน)$/i.test(t);
 }
 function isAIUrgentActive(groupId) {
   const exp = aiUrgentSessions.get(groupId);
@@ -176,7 +177,7 @@ app.post('/webhook', async (req,res) => {
       activateAIUrgent(sourceId);
       await replyMessages(event.replyToken, [{
         type:'text',
-        text:'สวัสดีครับ 🤖 มีอะไรให้น้องอูจินช่วยค้นหาหรือช่วยเหลือด้านใดครับ\n\n✅ พิมพ์คำถามได้เลยครับ น้องพร้อมตอบทุกเรื่อง ทั้งธุรกิจ กฎหมาย ราชการ และอื่นๆ\n\n(พิมพ์ "ขอบคุณ" เมื่อเสร็จแล้วครับ)',
+        text:'สวัสดีครับ 🤖 มีอะไรให้น้องอูจินช่วยค้นหาหรือช่วยเหลือด้านใดครับ\n\n✅ ถามอะไรก็ได้เลยครับ — ธุรกิจ กฎหมายไทย ราชการ เทคโนโลยี การเงิน วิทยาศาสตร์ ทุกศาสตร์ทั่วโลก\n🎨 พิมพ์ "สร้าง infographic เรื่อง..." ก็ได้รูปภาพเลย!\n\n(พิมพ์ "ขอบคุณ" เมื่อถามเสร็จแล้วครับ)',
       }]).catch(e=>console.error('[AI Urgent] reply failed:',e.message));
       continue;
     }
