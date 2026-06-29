@@ -47,7 +47,7 @@ function toLineMessages(prefix, text) {
   const full = prefix + text;
   if (full.length <= MAX_LINE_TEXT) return [{ type: 'text', text: full }];
   const chunks = [];
-  for (let i = 0; i < full.length && chunks.length < 4; i += MAX_LINE_TEXT) {
+  for (let i = 0; i < full.length && chunks.length < 5; i += MAX_LINE_TEXT) {
     chunks.push({ type: 'text', text: full.slice(i, i + MAX_LINE_TEXT) });
   }
   return chunks;
