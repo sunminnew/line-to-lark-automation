@@ -73,8 +73,10 @@ async function summarizeMessages(messages) {
 
 // ── Groq (keyword-triggered Thai summary for Lark) ────────────────────────────
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL   = 'llama-3.3-70b-versatile';
+const GROQ_API_KEY   = process.env.GROQ_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GROQ_MODEL          = 'llama-3.3-70b-versatile';
+const GROQ_MODEL_FALLBACK = 'llama-3.1-8b-instant';
 
 const THAI_SUMMARY_PROMPT = `คุณคือผู้ช่วยสรุปงานระดับมืออาชีพที่วิเคราะห์บทสนทนาแล้วสรุปเป็นภาษาไทยอย่างชาญฉลาด
 
@@ -139,6 +141,40 @@ async function summarizeForLark(messages, groupLabel = 'LINE Group') {
     return summary;
 
   } catch (err) {
+    const status = err.response?.status;
+    const isQuota = status === 429 || status === 413;
+
+    // Tier-2: retry with 8b model
+    if (isQuota && err._model !== GROQ_MODEL_FALLBACK) {
+      console.log('[AI-Groq] 70b quota → retrying with 8b');
+      try {
+        const r2 = await axios.post(
+          'https://api.groq.com/openai/v1/chat/completions',
+          { model: GROQ_MODEL_FALLBACK, messages: [
+              { role: 'system', content: THAI_SUMMARY_PROMPT },
+              { role: 'user',   content: userPrompt },
+            ], temperature: 0.3, max_tokens: 1000 },
+          { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` } }
+        );
+        return r2.data.choices[0].message.content.trim();
+      } catch (err2) {
+        const s2 = err2.response?.status;
+        if ((s2 === 429 || s2 === 413) && GEMINI_API_KEY) {
+          // Tier-3: Gemini
+          console.log('[AI-Groq] Both Groq models quota → falling back to Gemini');
+          try {
+            const gRes = await axios.post(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+              { contents: [{ parts: [{ text: THAI_SUMMARY_PROMPT + '\n\n' + userPrompt }] }],
+                generationConfig: { temperature: 0.3, maxOutputTokens: 1000 } }
+            );
+            return gRes.data.candidates[0].content.parts[0].text.trim();
+          } catch (gErr) {
+            console.error('[AI-Gemini] Summary failed:', gErr.message);
+          }
+        }
+      }
+    }
     console.error('[AI-Groq] Summarisation failed:', err.response?.data ?? err.message);
     return '❌ ขออภัย ไม่สามารถสรุปงานได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง';
   }
