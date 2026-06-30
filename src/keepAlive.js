@@ -1,53 +1,28 @@
 /**
  * keepAlive.js
- * Pings the app's own root endpoint every 10 minutes so Render's free
- * plan never puts the service to sleep (sleep threshold = 15 min idle).
- *
- * Requires the env var RENDER_EXTERNAL_URL — Render injects this
- * automatically (e.g. https://line-to-lark-xxx.onrender.com).
- * Falls back to localhost during local dev (no-op effectively).
+ * Pings the server every 5 minutes to prevent Render free-tier sleep.
+ * Render spins down after ~15 min of inactivity — 5 min ping keeps it always warm.
  */
+const axios = require('axios');
 
-const https = require('https');
-const http  = require('http');
-const cron  = require('node-cron');
+const PING_URL = process.env.RENDER_EXTERNAL_URL || 'https://line-to-lark-automation.onrender.com';
+const INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (was 10 — now tighter to prevent ANY sleep)
 
-const SELF_URL = process.env.RENDER_EXTERNAL_URL
-  ? `${process.env.RENDER_EXTERNAL_URL}/`
-  : `http://localhost:${process.env.PORT ?? 3000}/`;
-
-function ping() {
-  const lib = SELF_URL.startsWith('https') ? https : http;
-  const req = lib.get(SELF_URL, (res) => {
-    console.log(`[KeepAlive] ✅ Pinged ${SELF_URL} → ${res.statusCode}`);
-    res.resume(); // drain
-  });
-  req.on('error', (err) => {
-    console.warn(`[KeepAlive] ⚠️  Ping failed: ${err.message} — retrying in 1 min`);
-    // Retry once after 60 seconds
-    setTimeout(ping, 60_000);
-  });
-  req.setTimeout(15_000, () => {
-    console.warn('[KeepAlive] ⏱️  Ping timed out — retrying in 1 min');
-    req.destroy();
-    setTimeout(ping, 60_000);
-  });
+async function ping() {
+  try {
+    const r = await axios.get(PING_URL + '/', { timeout: 10000 });
+    console.log('[KeepAlive] ping ok', r.status);
+  } catch (e) {
+    console.warn('[KeepAlive] ping failed:', e.message?.slice(0, 60));
+    // Silent — don't crash the server over a failed ping
+  }
 }
 
-/**
- * Schedule a ping every 10 minutes (well inside the 15-min idle threshold).
- * Also ping immediately on startup so the first cron tick is never the first ping.
- */
 function startKeepAlive() {
-  if (!process.env.RENDER_EXTERNAL_URL) {
-    console.log('[KeepAlive] No RENDER_EXTERNAL_URL — skipping (local dev mode).');
-    return;
-  }
-  // Immediate ping on startup
+  // Ping immediately on start, then every 5 minutes
   ping();
-  // Then every 10 minutes
-  cron.schedule('*/10 * * * *', ping, { timezone: 'Asia/Bangkok' });
-  console.log(`[KeepAlive] 🏓 Pinging ${SELF_URL} every 10 min to prevent free-plan sleep.`);
+  setInterval(ping, INTERVAL_MS);
+  console.log('[KeepAlive] started — pinging every 5 min');
 }
 
 module.exports = { startKeepAlive };
