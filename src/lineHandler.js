@@ -1,37 +1,22 @@
 /**
- * lineHandler.js — Translation Engine v5
+ * lineHandler.js — Translation Engine v6
  *
- * GROQ ONLY (reliable) + Gemini fallback
- * Removed: deprecated mixtral-8x7b-32768, gemma2-9b-it
- * Removed: gemini-1.5-flash (404)
- * Fixed: isBad() regex uses Unicode escapes
- *
- * Working tiers:
- * T01: Groq llama-3.3-70b-versatile  ← primary (6K TPM free)
- * T02: Gemini 2.0 Flash               ← secondary (4M TPM free)
- * T03: Groq llama-3.1-70b-versatile   ← backup Groq
- * T04: Groq deepseek-r1-distill-70b   ← extra Groq
- * T05: Groq qwen-qwq-32b              ← extra Groq
- * T06: Groq kimi-k2-instruct           ← extra Groq
- * T07: Gemini 1.5 Flash Latest        ← Gemini fallback
- * T08: Cerebras llama-3.3-70b         ← if key set
- * T09: OR llama-3.3-70b:free          ← if key set
- * T10: OR gemma-2-9b:free             ← if key set
- * T11: Groq llama-3.1-8b-instant      ← final safety net
+ * v6: Strip @mentions before translation (fix: "@Pond" → no translate)
+ * v5: 11-tier cascade, fixed deprecated models, Unicode isBad()
  */
 require('dotenv').config();
 const crypto = require('crypto');
-const axios  = require('axios');
+const axios = require('axios');
 
-const CHANNEL_SECRET       = process.env.LINE_CHANNEL_SECRET;
+const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const GROQ_API_KEY         = process.env.GROQ_API_KEY;
-const GEMINI_API_KEY       = process.env.GEMINI_API_KEY;
-const CEREBRAS_API_KEY     = process.env.CEREBRAS_API_KEY;
-const OPENROUTER_API_KEY   = process.env.OPENROUTER_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 const UJIN_NAME = 'อูจิน (우진)';
-const COMPANY   = 'Wisdom International';
+const COMPANY = 'Wisdom International';
 
 function verifySignature(body, signature) {
   return crypto.createHmac('SHA256', CHANNEL_SECRET).update(body).digest('base64') === signature;
@@ -55,11 +40,9 @@ RULES: Thai translation only. No word lists. No English in output. Natural tone.
 // ── Output validator — Unicode escapes to avoid encoding issues ───────────────
 function isBad(out, dir) {
   if (!out || out.trim().length < 2) return true;
-  if (out.includes('->') || out.includes('→')) return true;
-  // th_to_kr: output must NOT contain Thai chars (฀-๿)
-  if (dir === 'th_to_kr' && /[฀-๿]/.test(out)) return true;
-  // kr_to_th: output must NOT contain Korean chars (가-힣)
-  if (dir === 'kr_to_th' && /[가-힣ᄀ-ᇿ㄰-㆏]/.test(out)) return true;
+  if (out.includes('->') || out.includes('\u2192')) return true;
+  if (dir === 'th_to_kr' && /[\u0E00-\u0E7F]/.test(out)) return true;
+  if (dir === 'kr_to_th' && /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/.test(out)) return true;
   return false;
 }
 
@@ -98,17 +81,17 @@ const openrouter = (sys, usr, model) => {
 // ── 11-Tier Cascade ───────────────────────────────────────────────────────────
 async function translateWithCascade(text, sys, dir) {
   const tiers = [
-    { n:'T01:Groq-70b',        f:()=>groq(sys,text,'llama-3.3-70b-versatile') },
-    { n:'T02:Gemini-2.0',      f:()=>gemini(sys,text,'gemini-2.0-flash') },
-    { n:'T03:Groq-70b-v2',     f:()=>groq(sys,text,'llama-3.1-70b-versatile') },
-    { n:'T04:Groq-DeepSeek',   f:()=>groq(sys,text,'deepseek-r1-distill-llama-70b') },
-    { n:'T05:Groq-Qwen',       f:()=>groq(sys,text,'qwen-qwq-32b') },
-    { n:'T06:Groq-Kimi',       f:()=>groq(sys,text,'moonshotai/kimi-k2-instruct') },
-    { n:'T07:Gemini-1.5',      f:()=>gemini(sys,text,'gemini-1.5-flash-latest') },
-    { n:'T08:Cerebras-70b',    f:()=>cerebras(sys,text) },
-    { n:'T09:OR-llama-70b',    f:()=>openrouter(sys,text,'meta-llama/llama-3.3-70b-instruct:free') },
-    { n:'T10:OR-gemma2',       f:()=>openrouter(sys,text,'google/gemma-2-9b-it:free') },
-    { n:'T11:Groq-8b',         f:()=>groq(sys,text,'llama-3.1-8b-instant') },
+    { n:'T01:Groq-70b',      f:()=>groq(sys,text,'llama-3.3-70b-versatile') },
+    { n:'T02:Gemini-2.0',    f:()=>gemini(sys,text,'gemini-2.0-flash') },
+    { n:'T03:Groq-70b-v2',   f:()=>groq(sys,text,'llama-3.1-70b-versatile') },
+    { n:'T04:Groq-DeepSeek', f:()=>groq(sys,text,'deepseek-r1-distill-llama-70b') },
+    { n:'T05:Groq-Qwen',     f:()=>groq(sys,text,'qwen-qwq-32b') },
+    { n:'T06:Groq-Kimi',     f:()=>groq(sys,text,'moonshotai/kimi-k2-instruct') },
+    { n:'T07:Gemini-1.5',    f:()=>gemini(sys,text,'gemini-1.5-flash-latest') },
+    { n:'T08:Cerebras-70b',  f:()=>cerebras(sys,text) },
+    { n:'T09:OR-llama-70b',  f:()=>openrouter(sys,text,'meta-llama/llama-3.3-70b-instruct:free') },
+    { n:'T10:OR-gemma2',     f:()=>openrouter(sys,text,'google/gemma-2-9b-it:free') },
+    { n:'T11:Groq-8b',       f:()=>groq(sys,text,'llama-3.1-8b-instant') },
   ];
   for (const t of tiers) {
     try {
@@ -123,17 +106,36 @@ async function translateWithCascade(text, sys, dir) {
 }
 
 // ── Language detection ────────────────────────────────────────────────────────
-const THAI_RE    = /[฀-๿]/;
-const KOREAN_RE  = /[가-힣ᄀ-ᇿ㄰-㆏]/;
+const THAI_RE    = /[\u0E00-\u0E7F]/;
+const KOREAN_RE  = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
 const ENGLISH_RE = /^[A-Za-z0-9\s\p{P}\p{S}]+$/u;
 const MAX_CHARS  = 3000;
 
+/**
+ * Strip @Name mentions so they are never translated.
+ * e.g. "@Pond สวัสดี" → "สวัสดี"   |   "@Pond" → ""
+ */
+function stripMentions(text) {
+  return text
+    .replace(/@[\w\u0E00-\u0E7F\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function translateAll(rawText) {
-  const text = rawText.length > MAX_CHARS
-    ? rawText.slice(0, MAX_CHARS) + '\n...(truncated)'
-    : rawText;
-  if (THAI_RE.test(text))    return { kr: await translateWithCascade(text, PROMPT_TH_TO_KR, 'th_to_kr') };
-  if (KOREAN_RE.test(text))  return { th: await translateWithCascade(text, PROMPT_KR_TO_TH, 'kr_to_th') };
+  // Remove @mentions — translate only actual message content
+  const stripped = stripMentions(rawText);
+  if (!stripped || stripped.length < 2) {
+    console.log('[TR] skip — only mention or empty after strip');
+    return null;
+  }
+
+  const text = stripped.length > MAX_CHARS
+    ? stripped.slice(0, MAX_CHARS) + '\n...(truncated)'
+    : stripped;
+
+  if (THAI_RE.test(text))   return { kr: await translateWithCascade(text, PROMPT_TH_TO_KR, 'th_to_kr') };
+  if (KOREAN_RE.test(text)) return { th: await translateWithCascade(text, PROMPT_KR_TO_TH, 'kr_to_th') };
   if (ENGLISH_RE.test(text) && text.trim().length > 3) {
     const [kr, th] = await Promise.all([
       translateWithCascade(text, PROMPT_EN_TO_KR, 'en_to_kr'),
