@@ -125,8 +125,9 @@ function stripMentions(text) {
 async function translateAll(rawText) {
   // Remove @mentions — translate only actual message content
   const stripped = stripMentions(rawText);
-  if (!stripped || stripped.length < 2) {
-    console.log('[TR] skip — only mention or empty after strip');
+  // Skip very short messages (ครับ, ค่ะ, OK, 네 etc.) — not worth translating
+  if (!stripped || stripped.length < 5) {
+    console.log('[TR] skip — too short after strip: ' + JSON.stringify(stripped));
     return null;
   }
 
