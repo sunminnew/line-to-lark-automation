@@ -50,7 +50,7 @@ function isBad(out, dir) {
 const groq = (sys, usr, model) =>
   axios.post('https://api.groq.com/openai/v1/chat/completions',
     { model, messages: [{role:'system',content:sys},{role:'user',content:usr}], temperature: 0.1, max_tokens: 1500 },
-    { headers: { Authorization: `Bearer ${GROQ_API_KEY}` }, timeout: 20000 }
+    { headers: { Authorization: `Bearer ${GROQ_API_KEY}` }, timeout: 5000 }
   ).then(r => r.data.choices[0].message.content.trim());
 
 const gemini = (sys, usr, model) => {
@@ -58,7 +58,7 @@ const gemini = (sys, usr, model) => {
   return axios.post(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
     { contents: [{parts:[{text: sys + '\n\n' + usr}]}], generationConfig: { temperature: 0.1, maxOutputTokens: 1500 } },
-    { timeout: 20000 }
+    { timeout: 5000 }
   ).then(r => r.data.candidates[0].content.parts[0].text.trim());
 };
 
@@ -66,7 +66,7 @@ const cerebras = (sys, usr) => {
   if (!CEREBRAS_API_KEY) return Promise.reject(new Error('No CEREBRAS_API_KEY'));
   return axios.post('https://api.cerebras.ai/v1/chat/completions',
     { model: 'llama-3.3-70b', messages: [{role:'system',content:sys},{role:'user',content:usr}], temperature: 0.1, max_tokens: 1500 },
-    { headers: { Authorization: `Bearer ${CEREBRAS_API_KEY}` }, timeout: 20000 }
+    { headers: { Authorization: `Bearer ${CEREBRAS_API_KEY}` }, timeout: 5000 }
   ).then(r => r.data.choices[0].message.content.trim());
 };
 
@@ -74,7 +74,7 @@ const openrouter = (sys, usr, model) => {
   if (!OPENROUTER_API_KEY) return Promise.reject(new Error('No OPENROUTER_API_KEY'));
   return axios.post('https://openrouter.ai/api/v1/chat/completions',
     { model, messages: [{role:'system',content:sys},{role:'user',content:usr}], temperature: 0.1, max_tokens: 1500 },
-    { headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, 'HTTP-Referer':'https://wisdom-ujin.onrender.com','X-Title':'Wisdom Ujin' }, timeout: 20000 }
+    { headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, 'HTTP-Referer':'https://wisdom-ujin.onrender.com','X-Title':'Wisdom Ujin' }, timeout: 5000 }
   ).then(r => r.data.choices[0].message.content.trim());
 };
 
