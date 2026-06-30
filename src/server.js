@@ -259,7 +259,6 @@ app.post('/webhook', async (req,res) => {
           .catch(e=>console.error('[webhook] reply error:',e.message, e.response?.data ? JSON.stringify(e.response.data) : ''));
     } catch(err) {
       console.error('[webhook] translate error:',err.message);
-      replyMessages(event.replyToken, [{type:'text',text:'⚠️ ขณะนี้ระบบแปลชั่วคราวไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้งครับ'}]).catch(()=>{});
     }
 
     // ── ⑥ Business-hours buffer for hourly pipeline ────────────────────────
