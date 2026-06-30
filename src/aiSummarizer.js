@@ -1,21 +1,10 @@
 /**
- * aiSummarizer.js — อูจิน Summary Brain
+ * aiSummarizer.js — อูจิน Summary Brain v2
  *
- * ╔══════════════════════════════════════════════════════════════╗
- *  11-TIER FREE SUMMARY CASCADE — ฟรีทุกชั้น ไม่มีบั๊คเลยแม่แต่ครั้งเดียว
- * ╚══════════════════════════════════════════════════════════════╝
- *
- *  T01: Gemini 2.0 Flash        FREE  4M TPM  ← primary (best context window)
- *  T02: Gemini 1.5 Flash        FREE  1M TPM
- *  T03: Cerebras llama-3.3-70b  FREE 60K TPM
- *  T04: Groq llama-3.3-70b      FREE  6K TPM
- *  T05: OR llama-3.3-70b:free   FREE 200 RPD
- *  T06: OR gemma-2-9b:free      FREE 200 RPD
- *  T07: Groq mixtral-8x7b       FREE  5K TPM
- *  T08: Groq gemma2-9b          FREE 14K TPM
- *  T09: OR mistral-7b:free      FREE 200 RPD
- *  T10: OR phi-3-mini:free      FREE 200 RPD
- *  T11: Groq llama-3.1-8b       FREE 14K RPD  ← safety net
+ * FIX: Groq เป็น T01 (เร็ว เสถียร) ไม่ต้องรอ Gemini timeout ก่อน
+ * FIX: เอา mixtral-8x7b + gemma2-9b ออก (deprecated → 400)
+ * FIX: timeout ต่อ call = 12s (ให้ทัน 25s window ของ server.js)
+ * EXPORT: summarizeForLark ใช้ทั้ง server.js และ cronJob.js
  */
 require('dotenv').config();
 const axios = require('axios');
@@ -25,145 +14,116 @@ const GEMINI_API_KEY     = process.env.GEMINI_API_KEY;
 const CEREBRAS_API_KEY   = process.env.CEREBRAS_API_KEY;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
-// ── Context-Aware Prompts ─────────────────────────────────────────────────────
+// ── Context-aware prompts ─────────────────────────────────────────────────────
 function buildPrompt(mode, messages) {
-  const msgText = messages.map(m => `[${m.sender||'?'}]: ${m.text||''}`).join('\n');
-  const MAX = 8000;
-  const truncated = msgText.length > MAX ? msgText.slice(0, MAX) + '\n...(ข้อความยาวเกิน ตัดส่วนเกินออก)' : msgText;
+  const msgText = messages.map(m=>`[${m.senderName||m.sender||'?'}]: ${m.text||''}`).join('\n');
+  const MAX = 6000;
+  const body = msgText.length > MAX ? msgText.slice(0, MAX) + '\n...(ตัดส่วนเกิน)' : msgText;
 
-  const prompts = {
+  const map = {
     evening: {
-      sys: `คุณคืออูจิน (우진) ผู้ช่วย AI ของ Wisdom International
-วิเคราะห์บทสนทนาทั้งวันอย่างละเอียดและชาญฉลาด
-ตอบเป็นภาษาไทย กระชับแต่ครบถ้วน`,
-      user: `บทสนทนาทั้งวัน:
-${truncated}
-
-
-สรุปในรูปแบบนี้:
-📊 ภาพรวมวันนี้
-🎯 ประเด็นหลักที่สำคัญ
-⏳ งานค้างที่ยังไม่เสร็จ
-✅ สิ่งที่สำเร็จวันนี้
-⚠️ ปัญหาหรือความเสี่ยง
-💡 ข้อสังเกตสำคัญ
-📋 To-do สำหรับพรุ่งนี้`,
-      maxTokens: 2000
+      sys: 'คุณคืออูจิน (우진) AI ของ Wisdom International วิเคราะห์บทสนทนาทั้งวันอย่างลึกซึ้ง ตอบเป็นภาษาไทย',
+      user: `บทสนทนาทั้งวัน:\n${body}\n\nสรุปในรูปแบบ:\n📊 ภาพรวมวันนี้\n🎯 ประเด็นหลัก\n⏳ งานค้าง\n✅ สิ่งที่สำเร็จ\n⚠️ ปัญหา/ความเสี่ยง\n📋 To-do พรุ่งนี้`,
+      tok: 2000,
     },
     morning: {
-      sys: `คุณคืออูจิน (우진) ผู้ช่วย AI ของ Wisdom International`,
-      user: `ข้อความจากคืนที่แล้ว:
-${truncated}
-
-สรุปสั้นสำหรับเริ่มต้นวัน: ประเด็นค้าง, สิ่งต้องทำ, ข้อมูลสำคัญ`,
-      maxTokens: 1200
+      sys: 'คุณคืออูจิน (우진) AI ของ Wisdom International',
+      user: `ข้อความนอกเวลางาน:\n${body}\n\nสรุปสั้น: งานค้าง, สิ่งต้องทำ, ข้อมูลสำคัญ`,
+      tok: 1000,
     },
     pipeline: {
-      sys: `คุณคืออูจิน (우진) วิเคราะห์บทสนทนาธุรกิจสั้นๆ`,
-      user: `ข้อความ:
-${truncated}
-
-สรุปประเด็นสำคัญ งานค้าง และสิ่งต้องติดตาม (กระชับ)`,
-      maxTokens: 800
+      sys: 'คุณคืออูจิน (우진) วิเคราะห์บทสนทนาธุรกิจ ตอบกระชับ',
+      user: `ข้อความ:\n${body}\n\nสรุปประเด็นสำคัญ งานค้าง สิ่งต้องติดตาม`,
+      tok: 800,
     },
     default: {
-      sys: `คุณคืออูจิน (우진) ผู้ช่วย AI ของ Wisdom International`,
-      user: `ข้อความ:
-${truncated}
-
-สรุปประเด็นสำคัญ:`,
-      maxTokens: 1000
-    }
+      sys: 'คุณคืออูจิน (우진) AI ของ Wisdom International',
+      user: `ข้อความ:\n${body}\n\nสรุปประเด็นสำคัญ:`,
+      tok: 800,
+    },
   };
-  return prompts[mode] || prompts.default;
+  return map[mode] || map.default;
 }
 
-// ── Tier Callers ──────────────────────────────────────────────────────────────
-const groq = (sys,usr,model,maxTok) =>
+// ── API callers (timeout 12s ต่อ call เพื่อให้ทัน 25s window) ────────────────
+const groq = (sys,usr,model,tok) =>
   axios.post('https://api.groq.com/openai/v1/chat/completions',
-    {model,messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.3,max_tokens:maxTok||1000},
-    {headers:{Authorization:`Bearer ${GROQ_API_KEY}`},timeout:30000}
+    {model, messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.3, max_tokens:tok},
+    {headers:{Authorization:`Bearer ${GROQ_API_KEY}`}, timeout:12000}
   ).then(r=>r.data.choices[0].message.content.trim());
 
-const gemini = (sys,usr,model,maxTok) => {
+const gemini = (sys,usr,model,tok) => {
   if(!GEMINI_API_KEY) return Promise.reject(new Error('No GEMINI_API_KEY'));
   return axios.post(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-    {contents:[{parts:[{text:sys+'\n\n'+usr}]}],generationConfig:{temperature:0.3,maxOutputTokens:maxTok||1000}},
-    {timeout:30000}
+    {contents:[{parts:[{text:sys+'\n\n'+usr}]}], generationConfig:{temperature:0.3,maxOutputTokens:tok}},
+    {timeout:12000}
   ).then(r=>r.data.candidates[0].content.parts[0].text.trim());
 };
 
-const cerebras = (sys,usr,maxTok) => {
+const cerebras = (sys,usr,tok) => {
   if(!CEREBRAS_API_KEY) return Promise.reject(new Error('No CEREBRAS_API_KEY'));
   return axios.post('https://api.cerebras.ai/v1/chat/completions',
-    {model:'llama-3.3-70b',messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.3,max_tokens:maxTok||1000},
-    {headers:{Authorization:`Bearer ${CEREBRAS_API_KEY}`},timeout:30000}
+    {model:'llama-3.3-70b', messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.3, max_tokens:tok},
+    {headers:{Authorization:`Bearer ${CEREBRAS_API_KEY}`}, timeout:12000}
   ).then(r=>r.data.choices[0].message.content.trim());
 };
 
-const openrouter = (sys,usr,model,maxTok) => {
+const openrouter = (sys,usr,model,tok) => {
   if(!OPENROUTER_API_KEY) return Promise.reject(new Error('No OPENROUTER_API_KEY'));
   return axios.post('https://openrouter.ai/api/v1/chat/completions',
-    {model,messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.3,max_tokens:maxTok||1000},
+    {model, messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.3, max_tokens:tok},
     {headers:{Authorization:`Bearer ${OPENROUTER_API_KEY}`,
-      'HTTP-Referer':'https://wisdom-ujin.onrender.com','X-Title':'Wisdom Ujin'},timeout:30000}
+      'HTTP-Referer':'https://wisdom-ujin.onrender.com','X-Title':'Wisdom Ujin'}, timeout:12000}
   ).then(r=>r.data.choices[0].message.content.trim());
 };
 
-// ── 11-Tier FREE Cascade ──────────────────────────────────────────────────────
-async function aiComplete(userPrompt, systemPrompt, maxTokens=1000) {
+// ── 11-Tier Cascade — Groq FIRST (เสถียรที่สุด) ──────────────────────────────
+async function aiComplete(userPrompt, systemPrompt, maxTokens=800) {
   const sys = systemPrompt || 'คุณคืออูจิน ผู้ช่วย AI ของ Wisdom International';
   const tiers = [
-    {n:'T01:Gemini-2.0',    f:()=>gemini(sys,userPrompt,'gemini-2.0-flash',maxTokens)},
-    {n:'T02:Gemini-1.5',    f:()=>gemini(sys,userPrompt,'gemini-1.5-flash',maxTokens)},
-    {n:'T03:Cerebras-70b',  f:()=>cerebras(sys,userPrompt,maxTokens)},
-    {n:'T04:Groq-70b',      f:()=>groq(sys,userPrompt,'llama-3.3-70b-versatile',maxTokens)},
-    {n:'T05:OR-llama-70b',  f:()=>openrouter(sys,userPrompt,'meta-llama/llama-3.3-70b-instruct:free',maxTokens)},
-    {n:'T06:OR-Gemma2',     f:()=>openrouter(sys,userPrompt,'google/gemma-2-9b-it:free',maxTokens)},
-    {n:'T07:Groq-Mixtral',  f:()=>groq(sys,userPrompt,'mixtral-8x7b-32768',maxTokens)},
-    {n:'T08:Groq-Gemma2',   f:()=>groq(sys,userPrompt,'gemma2-9b-it',maxTokens)},
-    {n:'T09:OR-Mistral-7b', f:()=>openrouter(sys,userPrompt,'mistralai/mistral-7b-instruct:free',maxTokens)},
-    {n:'T10:OR-Phi3-mini',  f:()=>openrouter(sys,userPrompt,'microsoft/phi-3-mini-128k-instruct:free',maxTokens)},
+    {n:'T01:Groq-70b',      f:()=>groq(sys,userPrompt,'llama-3.3-70b-versatile',maxTokens)},
+    {n:'T02:Gemini-2.0',    f:()=>gemini(sys,userPrompt,'gemini-2.0-flash',maxTokens)},
+    {n:'T03:Groq-70b-v2',   f:()=>groq(sys,userPrompt,'llama-3.1-70b-versatile',maxTokens)},
+    {n:'T04:Groq-DeepSeek', f:()=>groq(sys,userPrompt,'deepseek-r1-distill-llama-70b',maxTokens)},
+    {n:'T05:Groq-Qwen',     f:()=>groq(sys,userPrompt,'qwen-qwq-32b',maxTokens)},
+    {n:'T06:Groq-Kimi',     f:()=>groq(sys,userPrompt,'moonshotai/kimi-k2-instruct',maxTokens)},
+    {n:'T07:Cerebras-70b',  f:()=>cerebras(sys,userPrompt,maxTokens)},
+    {n:'T08:Gemini-1.5',    f:()=>gemini(sys,userPrompt,'gemini-1.5-flash-latest',maxTokens)},
+    {n:'T09:OR-llama-70b',  f:()=>openrouter(sys,userPrompt,'meta-llama/llama-3.3-70b-instruct:free',maxTokens)},
+    {n:'T10:OR-Gemma2',     f:()=>openrouter(sys,userPrompt,'google/gemma-2-9b-it:free',maxTokens)},
     {n:'T11:Groq-8b',       f:()=>groq(sys,userPrompt,'llama-3.1-8b-instant',maxTokens)},
   ];
   for (const t of tiers) {
     try {
       const out = await t.f();
-      if (out && out.trim().length > 10) { console.log('[SUM] ok '+t.n); return out; }
+      if (out && out.trim().length > 10) { console.log('[SUM] ok ' + t.n); return out; }
     } catch(e) {
-      console.log('[SUM] err '+t.n+' '+e.message?.slice(0,50));
+      console.log('[SUM] err ' + t.n + ': ' + (e.response?.status || e.message?.slice(0,50)));
     }
   }
-  return 'ขออภัย ระบบ AI กำลังมีภาระสูง กรุณาลองใหม่';
+  return 'ขออภัย ระบบ AI กำลังมีภาระสูง กรุณาลองใหม่ครับ';
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-/**
- * summarizeMessages — used by cronJob for pipeline + evening + morning
- */
 async function summarizeMessages(messages, mode='default') {
   if (!messages || messages.length === 0) return null;
   const p = buildPrompt(mode, messages);
-  return await aiComplete(p.user, p.sys, p.maxTokens);
+  return await aiComplete(p.user, p.sys, p.tok);
 }
 
-/**
- * Legacy compat — cronJob may call this directly
- */
 async function generateSummary(messages) {
   return summarizeMessages(messages, 'pipeline');
 }
 
 /**
- * summarizeForLark — alias used by server.js and cronJob.js
- * mode: 'pipeline' (hourly), 'evening', 'morning', 'default'
+ * summarizeForLark — called by server.js (สรุป keyword) and cronJob.js
+ * @param {Array} messages
+ * @param {string} groupIdOrMode — mode string หรือ groupId (default: 'pipeline')
  */
 async function summarizeForLark(messages, groupIdOrMode) {
-  // If called with a mode string, use it; otherwise use 'pipeline'
   const mode = ['evening','morning','pipeline','default'].includes(groupIdOrMode)
-    ? groupIdOrMode
-    : 'pipeline';
+    ? groupIdOrMode : 'pipeline';
   return summarizeMessages(messages, mode);
 }
 
