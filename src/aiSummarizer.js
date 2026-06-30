@@ -155,4 +155,16 @@ async function generateSummary(messages) {
   return summarizeMessages(messages, 'pipeline');
 }
 
-module.exports = { summarizeMessages, generateSummary, aiComplete };
+/**
+ * summarizeForLark — alias used by server.js and cronJob.js
+ * mode: 'pipeline' (hourly), 'evening', 'morning', 'default'
+ */
+async function summarizeForLark(messages, groupIdOrMode) {
+  // If called with a mode string, use it; otherwise use 'pipeline'
+  const mode = ['evening','morning','pipeline','default'].includes(groupIdOrMode)
+    ? groupIdOrMode
+    : 'pipeline';
+  return summarizeMessages(messages, mode);
+}
+
+module.exports = { summarizeMessages, summarizeForLark, generateSummary, aiComplete };
