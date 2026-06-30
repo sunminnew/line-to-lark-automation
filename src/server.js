@@ -77,6 +77,29 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+
+// -- Debouncer: batch rapid-fire messages (1.5s window) --
+const msgBuf = new Map();
+const DEBOUNCE_MS = 1500;
+function scheduleTranslation(sourceId, text, replyToken) {
+  if (!msgBuf.has(sourceId)) msgBuf.set(sourceId, {texts:[], token:null, timer:null});
+  const buf = msgBuf.get(sourceId);
+  buf.texts.push(text);
+  buf.token = replyToken;
+  clearTimeout(buf.timer);
+  buf.timer = setTimeout(async () => {
+    const {texts, token} = buf;
+    msgBuf.delete(sourceId);
+    const combined = texts.join('\n');
+    try {
+      const tr = await withTimeout(translateAll(combined), 25000, 'translateAll');
+      const replies = [];
+      if (tr && tr.kr) replies.push(...toLineMessages('KR: ', tr.kr));
+      if (tr && tr.th) replies.push(...toLineMessages('TH: ', tr.th));
+      if (replies.length) await replyMessages(token, replies.slice(0,5)).catch(()=>{});
+    } catch(e) { console.error('[TR] silent-fail:', e.message); }
+  }, DEBOUNCE_MS);
+}
 app.use(express.json({ verify:(req,_res,buf)=>{ req.rawBody=buf; } }));
 
 const SUMMARY_KEYWORDS = ['สรุป','สรุปงาน','สรุปแชท','/สรุป','summary','/summary'];
@@ -248,18 +271,8 @@ app.post('/webhook', async (req,res) => {
     if (!inBizHours || !isWorking)
       addOffHoursMessage(sourceId, {timestamp,senderName,text});
 
-    // ── ⑤ Translate 24/7 ──────────────────────────────────────────────────
-    try {
-      const translations = await withTimeout(translateAll(text), 20000, 'translateAll');
-      const replies = [];
-      if (translations?.kr) replies.push(...toLineMessages('KR: ', translations.kr));
-      if (translations?.th) replies.push(...toLineMessages('TH: ', translations.th));
-      if (replies.length)
-        await replyMessages(event.replyToken, replies.slice(0,5))
-          .catch(e=>console.error('[webhook] reply error:',e.message, e.response?.data ? JSON.stringify(e.response.data) : ''));
-    } catch(err) {
-      console.error('[webhook] translate error:',err.message);
-    }
+      // -- Translate (debounced) --
+  scheduleTranslation(sourceId, text, event.replyToken);
 
     // ── ⑥ Business-hours buffer for hourly pipeline ────────────────────────
     if (inBizHours && isWorking) addMessage({timestamp,senderName,text});
