@@ -1,10 +1,8 @@
 /**
- * smartAdvisor.js — อูจิน Elite Intelligence Engine v4
+ * smartAdvisor.js — อูจิน Elite Intelligence Engine v5
  *
- * FIXES v4:
- * - คิดลึกแต่ตอบสั้น — ห้ามแสดง steps ออกมา
- * - สร้างรูปเฉพาะเมื่อผู้ใช้ขอตรงๆ เท่านั้น
- * - 11-tier FREE cascade
+ * v5: Groq เป็น T01 (เสถียร เร็ว), เอา deprecated mixtral/gemma2 ออก
+ * v4: คิดลึกแต่ตอบสั้น ห้ามแสดง steps, สร้างรูปเฉพาะเมื่อขอตรงๆ
  */
 require('dotenv').config();
 const axios = require('axios');
@@ -31,7 +29,7 @@ OUTPUT RULES — CRITICAL:
 6. Keep responses concise but complete — no unnecessary padding.
 
 IMAGE GENERATION:
-ONLY add [GENERATE_IMAGE: prompt] if the user explicitly asks for a picture, chart, infographic, diagram, or visual. 
+ONLY add [GENERATE_IMAGE: prompt] if the user explicitly asks for a picture, chart, infographic, diagram, or visual.
 Do NOT add it for normal questions about money, law, business, or any topic unless they say "สร้างรูป", "วาด", "infographic", "chart", "diagram", "ภาพ", "generate image".
 
 KNOWLEDGE BASE (expert level — use internally):
@@ -71,7 +69,7 @@ function userExplicitlyWantsImage(text) {
 const groq = (sys,usr,model,tok=1500) =>
   axios.post('https://api.groq.com/openai/v1/chat/completions',
     {model, messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.35, max_tokens:tok},
-    {headers:{Authorization:`Bearer ${GROQ_API_KEY}`}, timeout:28000}
+    {headers:{Authorization:`Bearer ${GROQ_API_KEY}`}, timeout:25000}
   ).then(r=>r.data.choices[0].message.content.trim());
 
 const gemini = (sys,usr,model,tok=1500) => {
@@ -80,7 +78,7 @@ const gemini = (sys,usr,model,tok=1500) => {
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
     {contents:[{parts:[{text:sys+'\n\n'+usr}]}],
      generationConfig:{temperature:0.35, maxOutputTokens:tok}},
-    {timeout:28000}
+    {timeout:25000}
   ).then(r=>r.data.candidates[0].content.parts[0].text.trim());
 };
 
@@ -88,7 +86,7 @@ const cerebras = (sys,usr,tok=1500) => {
   if(!CEREBRAS_API_KEY) return Promise.reject(new Error('No CEREBRAS_API_KEY'));
   return axios.post('https://api.cerebras.ai/v1/chat/completions',
     {model:'llama-3.3-70b', messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.35, max_tokens:tok},
-    {headers:{Authorization:`Bearer ${CEREBRAS_API_KEY}`}, timeout:28000}
+    {headers:{Authorization:`Bearer ${CEREBRAS_API_KEY}`}, timeout:25000}
   ).then(r=>r.data.choices[0].message.content.trim());
 };
 
@@ -97,27 +95,27 @@ const openrouter = (sys,usr,model,tok=1500) => {
   return axios.post('https://openrouter.ai/api/v1/chat/completions',
     {model, messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.35, max_tokens:tok},
     {headers:{Authorization:`Bearer ${OPENROUTER_API_KEY}`,
-      'HTTP-Referer':'https://wisdom-ujin.onrender.com','X-Title':'Wisdom Ujin'}, timeout:28000}
+      'HTTP-Referer':'https://wisdom-ujin.onrender.com','X-Title':'Wisdom Ujin'}, timeout:25000}
   ).then(r=>r.data.choices[0].message.content.trim());
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// 11-TIER FREE CASCADE
+// 11-TIER FREE CASCADE — Groq FIRST (เสถียรที่สุด, ไม่ขึ้นกับ quota)
 // ═══════════════════════════════════════════════════════════════════
 async function aiComplete(userPrompt, sys, maxTok=1500) {
   const systemPrompt = sys || MASTER_SYSTEM;
   const tiers = [
-    {n:'T01:Gemini-2.0', f:()=>gemini(systemPrompt,userPrompt,'gemini-2.0-flash',maxTok)},
-    {n:'T02:Gemini-1.5', f:()=>gemini(systemPrompt,userPrompt,'gemini-1.5-flash',maxTok)},
-    {n:'T03:Cerebras',   f:()=>cerebras(systemPrompt,userPrompt,maxTok)},
-    {n:'T04:Groq-70b',   f:()=>groq(systemPrompt,userPrompt,'llama-3.3-70b-versatile',maxTok)},
-    {n:'T05:OR-llama',   f:()=>openrouter(systemPrompt,userPrompt,'meta-llama/llama-3.3-70b-instruct:free',maxTok)},
-    {n:'T06:OR-Gemma2',  f:()=>openrouter(systemPrompt,userPrompt,'google/gemma-2-9b-it:free',maxTok)},
-    {n:'T07:Groq-Mix',   f:()=>groq(systemPrompt,userPrompt,'mixtral-8x7b-32768',maxTok)},
-    {n:'T08:Groq-G2',    f:()=>groq(systemPrompt,userPrompt,'gemma2-9b-it',maxTok)},
-    {n:'T09:OR-Mis7b',   f:()=>openrouter(systemPrompt,userPrompt,'mistralai/mistral-7b-instruct:free',maxTok)},
-    {n:'T10:OR-Phi3',    f:()=>openrouter(systemPrompt,userPrompt,'microsoft/phi-3-mini-128k-instruct:free',maxTok)},
-    {n:'T11:Groq-8b',    f:()=>groq(systemPrompt,userPrompt,'llama-3.1-8b-instant',maxTok)},
+    {n:'T01:Groq-70b',      f:()=>groq(systemPrompt,userPrompt,'llama-3.3-70b-versatile',maxTok)},
+    {n:'T02:Gemini-2.0',    f:()=>gemini(systemPrompt,userPrompt,'gemini-2.0-flash',maxTok)},
+    {n:'T03:Groq-70b-v2',   f:()=>groq(systemPrompt,userPrompt,'llama-3.1-70b-versatile',maxTok)},
+    {n:'T04:Groq-DeepSeek', f:()=>groq(systemPrompt,userPrompt,'deepseek-r1-distill-llama-70b',maxTok)},
+    {n:'T05:Groq-Qwen',     f:()=>groq(systemPrompt,userPrompt,'qwen-qwq-32b',maxTok)},
+    {n:'T06:Groq-Kimi',     f:()=>groq(systemPrompt,userPrompt,'moonshotai/kimi-k2-instruct',maxTok)},
+    {n:'T07:Cerebras-70b',  f:()=>cerebras(systemPrompt,userPrompt,maxTok)},
+    {n:'T08:Gemini-1.5',    f:()=>gemini(systemPrompt,userPrompt,'gemini-1.5-flash-latest',maxTok)},
+    {n:'T09:OR-llama-70b',  f:()=>openrouter(systemPrompt,userPrompt,'meta-llama/llama-3.3-70b-instruct:free',maxTok)},
+    {n:'T10:OR-Gemma2',     f:()=>openrouter(systemPrompt,userPrompt,'google/gemma-2-9b-it:free',maxTok)},
+    {n:'T11:Groq-8b',       f:()=>groq(systemPrompt,userPrompt,'llama-3.1-8b-instant',maxTok)},
   ];
   for (const t of tiers) {
     try {
@@ -140,10 +138,10 @@ function isQuestion(text) {
   if (!text || text.trim().length < 3) return false;
   const t = text.trim();
   return [
-    /[?？꽤]/,
+    /[?？]/,
     /^(ใคร|อะไร|ที่ไหน|เมื่อไร|ทำไม|อย่างไร|เท่าไร|กี่|ยังไง|ได้ไหม|มีไหม|ใช่ไหม|บอก|แนะนำ|ช่วย|สอน|อธิบาย)/,
     /^(누구|뭐|어디|언제|왜|어떻게|얼마|몇|할수있|있나요|인가요|되나요|알려|도와|설명)/,
-    /^(who|what|where|when|why|how|is|are|can|could|would|should|tell|explain|help)/i,
+    /^(who|what|where|when|why|how|is|are|can|could|would|should|tell|explain|help)/i,
     /(ช่วย|แนะนำ|บอก|อธิบาย|หา|ขอ).*(หน่อย|ได้ไหม|ครับ|ค่ะ|คะ)/,
   ].some(p => p.test(t));
 }
