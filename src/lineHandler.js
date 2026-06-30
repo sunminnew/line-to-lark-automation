@@ -25,17 +25,17 @@ function verifySignature(body, signature) {
 // ── Prompts ───────────────────────────────────────────────────────────────────
 const PROMPT_TH_TO_KR = `You are a professional Thai-to-Korean translator.
 Translate the Thai message below into natural, conversational Korean.
-RULES: Output ONLY the Korean translation. NO explanations. NO word lists. NO Thai characters in output. One paragraph.`;
+RULES: Output ONLY the Korean translation. NO explanations. NO Korean/Thai word lists after translation. NO Thai characters in output. PRESERVE all line breaks, numbered lists, and formatting exactly as in the original.`;
 
 const PROMPT_KR_TO_TH = `You are a professional Korean-to-Thai translator.
 Translate the Korean message below into natural, conversational Thai.
-RULES: Output ONLY the Thai translation. NO explanations. NO word lists. NO Korean characters in output. One paragraph.`;
+RULES: Output ONLY the Thai translation. NO explanations. NO Korean/Thai word lists after translation. NO Korean characters in output. PRESERVE all line breaks, numbered lists, and formatting exactly as in the original.`;
 
 const PROMPT_EN_TO_KR = `Professional English-to-Korean translator.
-RULES: Korean translation only. No word lists. No English in output. Natural tone. One paragraph.`;
+RULES: Korean translation only. No word lists. No English in output. Natural tone. PRESERVE all line breaks, numbered lists, and formatting exactly as in the original.`;
 
 const PROMPT_EN_TO_TH = `Professional English-to-Thai translator.
-RULES: Thai translation only. No word lists. No English in output. Natural tone. One paragraph.`;
+RULES: Thai translation only. No word lists. No English in output. Natural tone. PRESERVE all line breaks, numbered lists, and formatting exactly as in the original.`;
 
 // ── Output validator — Unicode escapes to avoid encoding issues ───────────────
 function isBad(out, dir) {
