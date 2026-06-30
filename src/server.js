@@ -239,11 +239,7 @@ app.post('/webhook', async (req,res) => {
         ).catch(e=>console.error('[AI Urgent] Lark send failed:',e.message));
 
       } catch(err) {
-        console.error('[AI Urgent] answer failed:',err.message);
-        await replyMessages(event.replyToken, [{
-          type:'text',
-          text:'⚠️ ขออภัยครับ ขณะนี้ระบบไม่สามารถตอบได้ชั่วคราว กรุณาลองใหม่อีกครั้งครับ',
-        }]).catch(()=>{});
+        console.error('[AI Urgent] silent-fail:', err.message);
       }
       continue; // don't translate in AI Urgent mode
     }
