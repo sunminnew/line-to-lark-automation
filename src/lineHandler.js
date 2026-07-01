@@ -132,12 +132,27 @@ const CASCADE = [
   { id: 'T11', fn: (p, t) => callGroq('llama-3.1-8b-instant', p, t) },
 ];
 
-function isBad(out, dir) {
-  if (!out || out.trim().length < 2) return true;
-  if (out.includes('->') || out.includes('→')) return true;
-  if (dir === 'th_to_kr' && /[฀-๿]/.test(out)) return true;
-  if (dir === 'kr_to_th' && /[가-힯ᄀ-ᇿ㄰-㆏]/.test(out)) return true;
+function detectLoop(text) {
+  if (!text || text.length < 60) return false;
+  // Seed: if first 20 chars repeat 4+ times the output is looping
+  const esc = text.slice(0, 20).replace(/[.\\*+?^${}()|[\\]]/g, String.fromCharCode(92) + "$&");
+  try { if ((text.match(new RegExp(esc, "g")) || []).length >= 4) return true; } catch {}
+  // Sliding window: 5+ duplicate 20-char chunks = loop
+  const seen = new Set(); let dupes = 0;
+  for (let i = 0; i + 20 <= text.length; i += 10) {
+    const c = text.slice(i, i + 20);
+    if (seen.has(c)) { if (++dupes >= 5) return true; } else seen.add(c);
+  }
   return false;
+}
+
+function isBad(out, dir) {
+if (!out || out.trim().length < 2) return true;
+if (out.includes("->") || out.includes("→")) return true;
+if (detectLoop(out)) return true;
+if (dir === "th_to_kr" && /[฀-๿]/.test(out)) return true;
+if (dir === "kr_to_th" && /[가-퟿ᄀ-ᇿ㄰-㆏]/.test(out)) return true;
+return false;
 }
 
 async function translateWithCascade(text, systemPrompt, dir) {
