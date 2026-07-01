@@ -34,6 +34,23 @@ const PORT = process.env.PORT ?? 3000;
 const LINE_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const WEBHOOK_URL = 'https://line-to-lark-automation.onrender.com/webhook';
 
+// ── Group name cache (LINE API) ───────────────────────────────────────────
+const groupNameCache = new Map();
+async function getGroupName(groupId) {
+  if (!groupId || groupId === 'unknown') return null;
+  if (groupNameCache.has(groupId)) return groupNameCache.get(groupId);
+  try {
+    const r = await axios.get(
+      `https://api.line.me/v2/bot/group/${groupId}/summary`,
+      { headers: { Authorization: `Bearer ${LINE_TOKEN}` }, timeout: 3000 }
+    );
+    const name = r.data.groupName || null;
+    if (name) groupNameCache.set(groupId, name);
+    return name;
+  } catch { return null; }
+}
+
+
 // ── AI Urgent Sessions ─────────────────────────────────────────────────────────
 // Per-group session map: groupId → expiresAt (ms timestamp)
 const aiUrgentSessions = new Map();
@@ -270,7 +287,8 @@ app.post('/webhook', async (req,res) => {
     scheduleTranslation(sourceId, text, event.replyToken);
 
     // ── ⑥ Business-hours buffer for hourly pipeline ────────────────────────
-    if (inBizHours && isWorking) addMessage({timestamp,senderName,text});
+    const groupName = await getGroupName(event.source?.groupId ?? null);
+    if (inBizHours && isWorking) addMessage({timestamp,senderName,text,groupName});
 
     // ── ⑦ DISABLED — stop background AI analysis (only AI Urgent triggers AI) ──
     // if (isQuestion(text)) {
