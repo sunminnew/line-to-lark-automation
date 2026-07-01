@@ -1,119 +1,118 @@
 /**
  * larkMessenger.js
- * Three destination rooms:
- *   LARK_CHAT_ID    — 📣 Wisdom & Zenith9 – All Updates (main hub, hourly pipeline)
- *   ALERT_CHAT_ID   — 🚨 แจ้งเตือน – แชทค้าง (yellow/red stale alerts)
- *   SUMMARY_CHAT_ID — 📋 สรุปงาน – Daily Summary (morning/evening + keyword สรุป)
+ * Sends messages to Lark group chats via the IM v1 API.
  *
- * Bot identity: อูจิน (우진) | Wisdom International
+ * Room env vars:
+ *   LARK_CHAT_ID         -- Hub room (main, receives hourly pipeline summaries)
+ *   LARK_ALERT_CHAT_ID   -- Alert room (stale-chat / join / leave alerts)
+ *   LARK_SUMMARY_CHAT_ID -- Summary room (AI Urgent, morning/evening summaries)
+ *
+ * Auth: LARK_APP_ID / LARK_APP_SECRET
  */
-require('dotenv').config();
+
 const axios = require('axios');
 
-const LARK_BASE    = 'https://open.larksuite.com/open-apis';
-const APP_ID       = process.env.LARK_APP_ID     ?? 'cli_aab97d48c6789e15';
-const APP_SECRET   = process.env.LARK_APP_SECRET ?? 'OBNRxnFahLxKUuPyYO05XbzrcDTxtasP';
-const LARK_CHAT_ID    = process.env.LARK_CHAT_ID    ?? 'oc_626fd292d23700898b50fd059c1798ed';
-const ALERT_CHAT_ID   = process.env.ALERT_CHAT_ID   ?? 'oc_339458a388434ff81afde59342b511b3';
-const SUMMARY_CHAT_ID = process.env.SUMMARY_CHAT_ID ?? 'oc_a62e855cfd58229964b2d68b224288b8';
+const LARK_BASE            = 'https://open.larksuite.com/open-apis';
+const APP_ID               = process.env.LARK_APP_ID;
+const APP_SECRET           = process.env.LARK_APP_SECRET;
+const LARK_CHAT_ID         = process.env.LARK_CHAT_ID;
+const LARK_ALERT_CHAT_ID   = process.env.LARK_ALERT_CHAT_ID;
+const LARK_SUMMARY_CHAT_ID = process.env.LARK_SUMMARY_CHAT_ID;
 
-const UJIN_SIGNATURE = '🤖 อูจิน (우진) | Wisdom International';
+// ── Token cache ────────────────────────────────────────────────────────────
+let tokenCache = { token: null, expiresAt: 0 };
 
-let _token = null;
-let _tokenExpiry = 0;
-
-async function getToken() {
-  if (_token && Date.now() < _tokenExpiry) return _token;
+async function getTenantToken() {
+  const now = Date.now();
+  if (tokenCache.token && now < tokenCache.expiresAt) return tokenCache.token;
   const res = await axios.post(`${LARK_BASE}/auth/v3/tenant_access_token/internal`, {
     app_id: APP_ID, app_secret: APP_SECRET,
   });
-  _token = res.data.tenant_access_token;
-  _tokenExpiry = Date.now() + (res.data.expire - 60) * 1000;
-  return _token;
-}
-
-/**
- * Send plain text to the MAIN hub group (📣 All Updates)
- */
-async function sendToLarkGroup(text, chatId = LARK_CHAT_ID) {
-  const token = await getToken();
-  const res = await axios.post(
-    `${LARK_BASE}/im/v1/messages?receive_id_type=chat_id`,
-    { receive_id: chatId, msg_type: 'text', content: JSON.stringify({ text }) },
-    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
-  );
-  return res.data.data?.message_id;
-}
-
-/**
- * Send a colored interactive card.
- * @param {string} title - Card header text
- * @param {string} body  - Markdown body
- * @param {'yellow'|'red'|'green'|'blue'|'orange'} level
- * @param {string} chatId - Target chat (defaults to ALERT room)
- */
-async function sendAlertCard(title, body, level = 'yellow', chatId = ALERT_CHAT_ID) {
-  const token = await getToken();
-  const LEVEL_COLORS = { yellow:'yellow', red:'red', green:'green', blue:'blue', orange:'orange' };
-  const card = {
-    config: { wide_screen_mode: true },
-    header: {
-      title:    { tag: 'plain_text', content: title },
-      template: LEVEL_COLORS[level] ?? 'yellow',
-    },
-    elements: [
-      {
-        tag:  'div',
-        text: { tag: 'lark_md', content: body },
-      },
-      {
-        tag: 'note',
-        elements: [
-          { tag: 'plain_text', content: UJIN_SIGNATURE },
-          { tag: 'plain_text', content: `🕐 ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}` },
-        ],
-      },
-    ],
+  if (res.data.code !== 0) throw new Error(`[Lark Auth] ${JSON.stringify(res.data)}`);
+  tokenCache = {
+    token:     res.data.tenant_access_token,
+    expiresAt: now + (res.data.expire - 60) * 1000,
   };
-  const res = await axios.post(
-    `${LARK_BASE}/im/v1/messages?receive_id_type=chat_id`,
-    { receive_id: chatId, msg_type: 'interactive', content: JSON.stringify(card) },
-    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
-  );
-  return res.data.data?.message_id;
+  console.log('[LarkMsg] Token refreshed.');
+  return tokenCache.token;
+}
+
+// ── Core send ─────────────────────────────────────────────────────────────
+async function sendMsg(chatId, text) {
+  if (!chatId) { console.error('[LarkMsg] chatId not set — cannot send.'); return null; }
+  try {
+    const token = await getTenantToken();
+    const res = await axios.post(
+      `${LARK_BASE}/im/v1/messages?receive_id_type=chat_id`,
+      { receive_id: chatId, msg_type: 'text', content: JSON.stringify({ text }) },
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } }
+    );
+    if (res.data.code !== 0) throw new Error(JSON.stringify(res.data));
+    const msgId = res.data.data?.message_id;
+    console.log(`[LarkMsg] ✓ sent to ${chatId} (id: ${msgId})`);
+    return msgId;
+  } catch (err) {
+    console.error('[LarkMsg] Send failed:', err.response?.data ?? err.message);
+    return null;
+  }
 }
 
 /**
- * Send a summary card to the SUMMARY room (📋 สรุปงาน)
+ * Send plain text to the hub room (📣 all updates / hourly pipeline).
+ */
+async function sendToLarkGroup(text) {
+  return sendMsg(LARK_CHAT_ID, text);
+}
+
+/**
+ * Send a summary card to the summary room (📋).
+ * Falls back to hub room if LARK_SUMMARY_CHAT_ID is not set.
+ * @param {string} title  Header line
+ * @param {string} body   Body content
  */
 async function sendSummaryCard(title, body) {
-  return sendAlertCard(title, body, 'blue', SUMMARY_CHAT_ID);
+  const text = `${title}\n\n${body}`;
+  return sendMsg(LARK_SUMMARY_CHAT_ID || LARK_CHAT_ID, text);
 }
 
 /**
- * Send a stale-chat alert to the ALERT room (🚨 แจ้งเตือน)
- * level = 'yellow' or 'red'
+ * Send a stale-chat alert to the alert room (🚨).
+ * @param {string} title
+ * @param {string} body
+ * @param {'red'|'yellow'} color
  */
-async function sendStaleAlert(title, body, level = 'yellow') {
-  return sendAlertCard(title, body, level, ALERT_CHAT_ID);
+async function sendStaleAlert(title, body, color) {
+  const icon = color === 'red' ? '🔴' : '🟡';
+  const text = `${icon} ${title}\n\n${body}`;
+  return sendMsg(LARK_ALERT_CHAT_ID || LARK_CHAT_ID, text);
 }
 
+/**
+ * Send a bot join/leave alert card to the alert room (🚨).
+ * @param {string} title
+ * @param {string} body
+ * @param {'green'|'red'|'yellow'} color
+ */
+async function sendAlertCard(title, body, color) {
+  const icon = color === 'green' ? '🟢' : color === 'red' ? '🔴' : '🟡';
+  const text = `${icon} ${title}\n\n${body}`;
+  return sendMsg(LARK_ALERT_CHAT_ID || LARK_CHAT_ID, text);
+}
+
+/**
+ * List all group chats the bot is in — useful for finding LARK_*_CHAT_ID values.
+ */
 async function listBotChats() {
-  const token = await getToken();
-  const res = await axios.get(
-    `${LARK_BASE}/im/v1/chats?page_size=20`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return res.data.data?.items ?? [];
+  try {
+    const token = await getTenantToken();
+    const res = await axios.get(`${LARK_BASE}/im/v1/chats?member_id_type=open_id`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.data.data?.items ?? [];
+  } catch (err) {
+    console.error('[LarkMsg] List chats failed:', err.response?.data ?? err.message);
+    return [];
+  }
 }
 
-module.exports = {
-  sendToLarkGroup,
-  sendAlertCard,
-  sendSummaryCard,
-  sendStaleAlert,
-  listBotChats,
-  LARK_CHAT_ID,
-  ALERT_CHAT_ID,
-  SUMMARY_CHAT_ID,
-};
+module.exports = { sendToLarkGroup, sendSummaryCard, sendStaleAlert, sendAlertCard, listBotChats };
