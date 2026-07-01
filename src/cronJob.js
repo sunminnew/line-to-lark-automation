@@ -44,11 +44,13 @@ async function runPipeline() {
   // Keep full-day copy for evening deep analysis
   accumulateToDailyLog(messages);
 
-  const now     = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-  const summary = await summarizeForLark(messages, 'pipeline');
+    const now        = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+  const groupNames = [...new Set(messages.map(m => m.groupName).filter(Boolean))];
+  const groupLabel = groupNames.length ? ` - ${groupNames.join(', ')}` : '';
+  const summary    = await summarizeForLark(messages, 'pipeline');
   console.log(`[CRON] pipeline: ${messages.length} msgs → Lark`);
   await sendToLarkGroup(
-    `📊 สรุปงาน LINE (${now})\nจำนวนข้อความ: ${messages.length} รายการ\n\n${summary}`
+    `📊 สรุปงาน LINE${groupLabel} (${now})\nจำนวนข้อความ: ${messages.length} รายการ\n\n${summary}`
   );
 }
 
