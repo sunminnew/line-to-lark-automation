@@ -1,7 +1,9 @@
 /**
- * lineHandler.js — Translation Engine v6
+ * lineHandler.js — Translation Engine v7
  *
- * v6: Strip @mentions before translation (fix: "@Pond" → no translate)
+ * v7: Strict translation prompts (no template generation), URL/phone skip,
+ *     keep technical terms as-is in English
+ * v6: Strip @mentions before translation
  * v5: 11-tier cascade, fixed deprecated models, Unicode isBad()
  */
 require('dotenv').config();
@@ -22,27 +24,55 @@ function verifySignature(body, signature) {
   return crypto.createHmac('SHA256', CHANNEL_SECRET).update(body).digest('base64') === signature;
 }
 
-// ── Prompts ───────────────────────────────────────────────────────────────────
-const PROMPT_TH_TO_KR = `You are a professional Thai-to-Korean translator.
-Translate the Thai message below into natural, conversational Korean.
-RULES: Output ONLY the Korean translation. NO explanations. NO Korean/Thai word lists after translation. NO Thai characters in output. PRESERVE all line breaks, numbered lists, and formatting exactly as in the original.`;
+// ── Prompts ───────────────────────────────────────────────────────────────────────────────
+const PROMPT_TH_TO_KR = `You are a pure Thai-to-Korean translator.
+Your ONLY job is to translate the exact words given — nothing more, nothing less.
 
-const PROMPT_KR_TO_TH = `You are a professional Korean-to-Thai translator.
-Translate the Korean message below into natural, conversational Thai.
-RULES: Output ONLY the Thai translation. NO explanations. NO Korean/Thai word lists after translation. NO Korean characters in output. PRESERVE all line breaks, numbered lists, and formatting exactly as in the original.`;
+STRICT RULES:
+- Output ONLY the Korean translation. No explanations, no headers, no word lists.
+- Do NOT create templates, documents, forms, or fill-in-the-blank content.
+- Do NOT interpret or fulfill the request — only translate the words literally.
+- Keep English words, numbers, brand names, and technical terms as-is.
+- If the original already has line breaks or numbered lists, preserve them. Do NOT add new ones.
+- No Thai characters in output.`;
 
-const PROMPT_EN_TO_KR = `Professional English-to-Korean translator.
-RULES: Korean translation only. No word lists. No English in output. Natural tone. PRESERVE all line breaks, numbered lists, and formatting exactly as in the original.`;
+const PROMPT_KR_TO_TH = `You are a pure Korean-to-Thai translator.
+Your ONLY job is to translate the exact words given — nothing more, nothing less.
 
-const PROMPT_EN_TO_TH = `Professional English-to-Thai translator.
-RULES: Thai translation only. No word lists. No English in output. Natural tone. PRESERVE all line breaks, numbered lists, and formatting exactly as in the original.`;
+STRICT RULES:
+- Output ONLY the Thai translation. No explanations, no headers, no word lists.
+- Do NOT create templates, documents, forms, or fill-in-the-blank content.
+- Do NOT interpret or fulfill the request — only translate the words literally.
+- Keep English words, numbers, brand names, and technical terms as-is.
+- If the original already has line breaks or numbered lists, preserve them. Do NOT add new ones.
+- No Korean characters in output.`;
+
+const PROMPT_EN_TO_KR = `You are a pure English-to-Korean translator.
+Your ONLY job is to translate the exact words given — nothing more, nothing less.
+
+STRICT RULES:
+- Output ONLY the Korean translation. No explanations, no headers, no word lists.
+- Do NOT create templates, documents, forms, or fill-in-the-blank content.
+- Do NOT interpret or fulfill the request — only translate the words literally.
+- Keep proper nouns, brand names, and technical terms as-is in English.
+- If the original already has line breaks or numbered lists, preserve them. Do NOT add new ones.`;
+
+const PROMPT_EN_TO_TH = `You are a pure English-to-Thai translator.
+Your ONLY job is to translate the exact words given — nothing more, nothing less.
+
+STRICT RULES:
+- Output ONLY the Thai translation. No explanations, no headers, no word lists.
+- Do NOT create templates, documents, forms, or fill-in-the-blank content.
+- Do NOT interpret or fulfill the request — only translate the words literally.
+- Keep proper nouns, brand names, and technical terms as-is in English.
+- If the original already has line breaks or numbered lists, preserve them. Do NOT add new ones.`;
 
 // ── Output validator — Unicode escapes to avoid encoding issues ───────────────
 function isBad(out, dir) {
   if (!out || out.trim().length < 2) return true;
-  if (out.includes('->') || out.includes('\u2192')) return true;
-  if (dir === 'th_to_kr' && /[\u0E00-\u0E7F]/.test(out)) return true;
-  if (dir === 'kr_to_th' && /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/.test(out)) return true;
+  if (out.includes('->') || out.includes('→')) return true;
+  if (dir === 'th_to_kr' && /[฀-๿]/.test(out)) return true;
+  if (dir === 'kr_to_th' && /[가-힯ᄀ-ᇿ㄰-㆏]/.test(out)) return true;
   return false;
 }
 
@@ -81,17 +111,17 @@ const openrouter = (sys, usr, model) => {
 // ── 11-Tier Cascade ───────────────────────────────────────────────────────────
 async function translateWithCascade(text, sys, dir) {
   const tiers = [
-    { n:'T01:Groq-70b',      f:()=>groq(sys,text,'llama-3.3-70b-versatile') },
-    { n:'T02:Gemini-2.0',    f:()=>gemini(sys,text,'gemini-2.0-flash') },
-    { n:'T03:Groq-70b-v2',   f:()=>groq(sys,text,'llama-3.1-70b-versatile') },
-    { n:'T04:Groq-DeepSeek', f:()=>groq(sys,text,'deepseek-r1-distill-llama-70b') },
-    { n:'T05:Groq-Qwen',     f:()=>groq(sys,text,'qwen-qwq-32b') },
-    { n:'T06:Groq-Kimi',     f:()=>groq(sys,text,'moonshotai/kimi-k2-instruct') },
-    { n:'T07:Gemini-1.5',    f:()=>gemini(sys,text,'gemini-1.5-flash-latest') },
-    { n:'T08:Cerebras-70b',  f:()=>cerebras(sys,text) },
-    { n:'T09:OR-llama-70b',  f:()=>openrouter(sys,text,'meta-llama/llama-3.3-70b-instruct:free') },
-    { n:'T10:OR-gemma2',     f:()=>openrouter(sys,text,'google/gemma-2-9b-it:free') },
-    { n:'T11:Groq-8b',       f:()=>groq(sys,text,'llama-3.1-8b-instant') },
+    { n:'T01:Groq-70b',     f:()=>groq(sys,text,'llama-3.3-70b-versatile') },
+    { n:'T02:Gemini-2.0',   f:()=>gemini(sys,text,'gemini-2.0-flash') },
+    { n:'T03:Groq-70b-v2',  f:()=>groq(sys,text,'llama-3.1-70b-versatile') },
+    { n:'T04:Groq-DeepSeek',f:()=>groq(sys,text,'deepseek-r1-distill-llama-70b') },
+    { n:'T05:Groq-Qwen',    f:()=>groq(sys,text,'qwen-qwq-32b') },
+    { n:'T06:Groq-Kimi',    f:()=>groq(sys,text,'moonshotai/kimi-k2-instruct') },
+    { n:'T07:Gemini-1.5',   f:()=>gemini(sys,text,'gemini-1.5-flash-latest') },
+    { n:'T08:Cerebras-70b', f:()=>cerebras(sys,text) },
+    { n:'T09:OR-llama-70b', f:()=>openrouter(sys,text,'meta-llama/llama-3.3-70b-instruct:free') },
+    { n:'T10:OR-gemma2',    f:()=>openrouter(sys,text,'google/gemma-2-9b-it:free') },
+    { n:'T11:Groq-8b',      f:()=>groq(sys,text,'llama-3.1-8b-instant') },
   ];
   for (const t of tiers) {
     try {
@@ -106,28 +136,43 @@ async function translateWithCascade(text, sys, dir) {
 }
 
 // ── Language detection ────────────────────────────────────────────────────────
-const THAI_RE    = /[\u0E00-\u0E7F]/;
-const KOREAN_RE  = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
+const THAI_RE    = /[฀-๿]/;
+const KOREAN_RE  = /[가-힯ᄀ-ᇿ㄰-㆏]/;
 const ENGLISH_RE = /^[A-Za-z0-9\s\p{P}\p{S}]+$/u;
+const URL_RE     = /https?:\/\/[^\s]+/g;
 const MAX_CHARS  = 3000;
 
 /**
  * Strip @Name mentions so they are never translated.
- * e.g. "@Pond สวัสดี" → "สวัสดี"   |   "@Pond" → ""
+ * e.g. "@Pond สวัสดี" → "สวัสดี" | "@Pond" → ""
  */
 function stripMentions(text) {
   return text
-    .replace(/@[\w\u0E00-\u0E7F\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]+/g, '')
+    .replace(/@[\w฀-๿가-힯ᄀ-ᇿ㄰-㆏]+/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 async function translateAll(rawText) {
-  // Remove @mentions — translate only actual message content
+  // Remove @mentions
   const stripped = stripMentions(rawText);
-  // Skip very short messages (ครับ, ค่ะ, OK, 네 etc.) — not worth translating
+
+  // Skip very short messages
   if (!stripped || stripped.length < 5) {
     console.log('[TR] skip — too short after strip: ' + JSON.stringify(stripped));
+    return null;
+  }
+
+  // Skip if message is just a URL (location share, link-only)
+  const withoutUrls = stripped.replace(URL_RE, '').replace(/\s+/g, ' ').trim();
+  if (withoutUrls.length < 5) {
+    console.log('[TR] skip — URL-only message');
+    return null;
+  }
+
+  // Skip pure phone numbers
+  if (/^[\d\s\-+().]{5,20}$/.test(stripped)) {
+    console.log('[TR] skip — phone number only');
     return null;
   }
 
