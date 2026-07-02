@@ -10,6 +10,21 @@
  */
 require('dotenv').config();
 const cron = require('node-cron');
+const axios = require('axios');
+const groupNameCache = new Map();
+async function getGroupName(groupId) {
+  if (!groupId) return groupId;
+  if (groupNameCache.has(groupId)) return groupNameCache.get(groupId);
+  try {
+    const r = await axios.get(
+      'https://api.line.me/v2/bot/group/' + groupId + '/summary',
+      { headers: { Authorization: 'Bearer ' + process.env.LINE_CHANNEL_ACCESS_TOKEN }, timeout: 3000 }
+    );
+    const name = r.data.groupName || groupId;
+    groupNameCache.set(groupId, name);
+    return name;
+  } catch { return groupId; }
+}
 const { isBusinessHours }  = require('./timeRouter');
 const { isWorkingDay }     = require('./holidays');
 const { flushMessages }    = require('./messageStore');
@@ -63,18 +78,19 @@ async function checkStaleChats() {
   const stale = getStaleGroups(MIN15);
   for (const { groupId, ageMs, lastSenderName, lastText, alertLevel } of stale) {
     const mins = Math.floor(ageMs / 60000);
+    const groupName = await getGroupName(groupId);
     if (ageMs >= MIN30 && alertLevel !== 'red') {
       setAlertLevel(groupId, 'red');
       await sendStaleAlert(
         `🔴 แชทค้าง ${mins} นาที — ยังไม่มีใครตอบ!`,
-        `**กลุ่ม:** ${groupId}\n**ข้อความล่าสุด:** ${lastSenderName}: ${lastText.slice(0,100)}\n\n⚠️ โปรดติดต่อลูกค้าด่วนที่สุด!`,
+        `**กลุ่ม:** ${groupName}\n**ข้อความล่าสุด:** ${lastSenderName}: ${lastText.slice(0,100)}\n\n⚠️ โปรดติดต่อลูกค้าด่วนที่สุด!`,
         'red'
       );
     } else if (ageMs >= MIN15 && alertLevel === null) {
       setAlertLevel(groupId, 'yellow');
       await sendStaleAlert(
         `🟡 แชทรอตอบ ${mins} นาที`,
-        `**กลุ่ม:** ${groupId}\n**ข้อความล่าสุด:** ${lastSenderName}: ${lastText.slice(0,100)}`,
+        `**กลุ่ม:** ${groupName}\n**ข้อความล่าสุด:** ${lastSenderName}: ${lastText.slice(0,100)}`,
         'yellow'
       );
     }
@@ -100,7 +116,7 @@ async function sendMorningSummary() {
       const summary = await summarizeForLark(msgs, 'morning');
       await sendSummaryCard(
         `🌅 สรุปข้อความนอกเวลา — ${date}`,
-        `📩 **กลุ่ม:** ${groupId}\n📊 **จำนวน:** ${msgs.length} ข้อความ\n\n${summary}\n\n> ⚡ กรุณาวางแผนงานก่อนเริ่มงาน`
+        `📩 **กลุ่ม:** ${msgs[0]?.groupName || groupId}\n📊 **จำนวน:** ${msgs.length} ข้อความ\n\n${summary}\n\n> ⚡ กรุณาวางแผนงานก่อนเริ่มงาน`
       );
     }
   } else {
