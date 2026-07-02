@@ -1,5 +1,5 @@
 /**
- * server.js — LINE → อูจิน AI → Lark
+ * server.js — LINE → วิสดอม AI → Lark
  *
  * Rooms:
  *  📣 All Updates  → hourly pipeline (main hub)
@@ -7,7 +7,7 @@
  *  📋 Summary room → สรุป keyword + morning/evening summaries + AI analysis
  *
  * New: AI Urgent mode (triggered by "AI Urgent" in LINE group)
- *  → อูจินตอบกลับใน LINE กลุ่มนั้นทันที ด้วย Gemini Flash
+ *  → วิสดอมตอบกลับใน LINE กลุ่มนั้นทันที ด้วย Gemini Flash
  *  → ส่งคำตอบไป Lark ด้วย
  *
  * New: Background question detection
@@ -58,7 +58,7 @@ const AI_URGENT_TTL = 30 * 60 * 1000; // 30 minutes
 
 function isAIUrgentTrigger(text) {
   const t = text.trim();
-  return /^(ai\s*urgent|ai\s*agent|อูจิน|ujin\s*help|@อูจิน|หาอูจิน|เรียกอูจิน)$/i.test(t);
+  return /^(ai\s*urgent|ai\s*agent|วิสดอม|ujin\s*help|@วิสดอม|หาวิสดอม|เรียกวิสดอม)$/i.test(t);
 }
 function isAIUrgentActive(groupId) {
   const exp = aiUrgentSessions.get(groupId);
@@ -179,8 +179,8 @@ app.post('/webhook', async (req,res) => {
       const groupId = event.source?.groupId ?? event.source?.roomId ?? 'unknown';
       const now = new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok'});
       console.log(`[JOIN] ${groupId}`);
-      sendAlertCard('✅ อูจินเข้ากลุ่มใหม่',
-        `🤖 **อูจิน (우진)** ถูกเพิ่มเข้ากลุ่ม LINE แล้วครับ\n\n📌 **Group ID:** ${groupId}\n🕐 **เวลา:** ${now}\n\nพร้อมแปลภาษาและสรุปงานให้ทีมแล้วครับ 🙏`,'green')
+      sendAlertCard('✅ วิสดอมเข้ากลุ่มใหม่',
+        `🤖 **วิสดอม (위즈덤)** ถูกเพิ่มเข้ากลุ่ม LINE แล้วครับ\n\n📌 **Group ID:** ${groupId}\n🕐 **เวลา:** ${now}\n\nพร้อมแปลภาษาและสรุปงานให้ทีมแล้วครับ 🙏`,'green')
         .catch(e=>console.error('[JOIN] Lark failed:',e.message));
       continue;
     }
@@ -190,8 +190,8 @@ app.post('/webhook', async (req,res) => {
       const groupId = event.source?.groupId ?? event.source?.roomId ?? 'unknown';
       const now = new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok'});
       console.log(`[LEAVE] ${groupId}`);
-      sendAlertCard('⚠️ อูจินถูกนำออกจากกลุ่ม',
-        `🚨 **อูจิน (우진)** ถูกนำออกจากกลุ่ม LINE\n\n📌 **Group ID:** ${groupId}\n🕐 **เวลา:** ${now}\n\n⚠️ หากต้องการให้บอทกลับมา กรุณาเพิ่มเข้ากลุ่มใหม่ครับ`,'red')
+      sendAlertCard('⚠️ วิสดอมถูกนำออกจากกลุ่ม',
+        `🚨 **วิสดอม (위즈덤)** ถูกนำออกจากกลุ่ม LINE\n\n📌 **Group ID:** ${groupId}\n🕐 **เวลา:** ${now}\n\n⚠️ หากต้องการให้บอทกลับมา กรุณาเพิ่มเข้ากลุ่มใหม่ครับ`,'red')
         .catch(e=>console.error('[LEAVE] Lark failed:',e.message));
       continue;
     }
@@ -216,7 +216,7 @@ app.post('/webhook', async (req,res) => {
       activateAIUrgent(sourceId);
       await replyMessages(event.replyToken, [{
         type:'text',
-        text:'สวัสดีครับ 🤖 มีอะไรให้น้องอูจินช่วยค้นหาหรือช่วยเหลือด้านใดครับ\n\n✅ ถามอะไรก็ได้เลยครับ — ธุรกิจ กฎหมายไทย ราชการ เทคโนโลยี การเงิน วิทยาศาสตร์ ทุกศาสตร์ทั่วโลก\n🎨 พิมพ์ "สร้าง infographic เรื่อง..." ก็ได้รูปภาพเลย!\n\n(พิมพ์ "ขอบคุณ" เมื่อถามเสร็จแล้วครับ)',
+        text:'สวัสดีครับ 🤖 มีอะไรให้น้องวิสดอมช่วยค้นหาหรือช่วยเหลือด้านใดครับ\n\n✅ ถามอะไรก็ได้เลยครับ — ธุรกิจ กฎหมายไทย ราชการ เทคโนโลยี การเงิน วิทยาศาสตร์ ทุกศาสตร์ทั่วโลก\n🎨 พิมพ์ "สร้าง infographic เรื่อง..." ก็ได้รูปภาพเลย!\n\n(พิมพ์ "ขอบคุณ" เมื่อถามเสร็จแล้วครับ)',
       }]).catch(e=>console.error('[AI Urgent] reply failed:',e.message));
       continue;
     }
@@ -227,7 +227,7 @@ app.post('/webhook', async (req,res) => {
       if (DEACTIVATE_WORDS.test(text.trim())) {
         deactivateAIUrgent(sourceId);
         await replyMessages(event.replyToken, [{
-          type:'text', text:'ยินดีให้บริการเสมอครับ 🙏 อูจินพร้อมช่วยเหลือตลอดเวลานะครับ',
+          type:'text', text:'ยินดีให้บริการเสมอครับ 🙏 วิสดอมพร้อมช่วยเหลือตลอดเวลานะครับ',
         }]).catch(e=>console.error('[AI Urgent] deactivate reply failed:',e.message));
         continue;
       }
@@ -240,7 +240,7 @@ app.post('/webhook', async (req,res) => {
         const imageUrl = (result && typeof result === 'object') ? result.imageUrl : null;
 
         // Reply in LINE (text + optional image)
-        const lineReplies = toLineMessages('🤖 อูจิน: ', answerText);
+        const lineReplies = toLineMessages('🤖 วิสดอม: ', answerText);
         if (imageUrl) {
           lineReplies.push({ type:'image', originalContentUrl:imageUrl, previewImageUrl:imageUrl });
         }
@@ -251,7 +251,7 @@ app.post('/webhook', async (req,res) => {
         const now = new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok'});
         sendSummaryCard(
           `🤖 AI Urgent — ${senderName} · ${now}`,
-          `❓ **คำถาม:** ${text}\n\n💡 **อูจินตอบ:**\n${answerText}${imageUrl?'\n\n🎨 [ภาพ: '+imageUrl.slice(0,60)+'...]':''}\n\n> 🤖 อูจิน Elite Brain v3 | Wisdom International`
+          `❓ **คำถาม:** ${text}\n\n💡 **วิสดอมตอบ:**\n${answerText}${imageUrl?'\n\n🎨 [ภาพ: '+imageUrl.slice(0,60)+'...]':''}\n\n> 🤖 วิสดอม Elite Brain v3 | Wisdom International`
         ).catch(e=>console.error('[AI Urgent] Lark send failed:',e.message));
 
       } catch(err) {
@@ -300,7 +300,7 @@ app.post('/webhook', async (req,res) => {
 
 // ── Start ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log('\n🚀 อูจิน (우진) Server on port ' + PORT);
+  console.log('\n🚀 วิสดอม (위즈덤) Server on port ' + PORT);
   console.log('  Bangkok time  : ' + getBangkokTime());
   console.log('  Business hrs  : ' + (isBusinessHours() ? 'YES ✅' : 'NO ❌'));
   console.log('  AI Urgent     : ready (trigger: "AI Urgent" in LINE)');
