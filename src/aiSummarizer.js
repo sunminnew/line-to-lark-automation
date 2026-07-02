@@ -81,7 +81,18 @@ const openrouter = (sys,usr,model,tok) => {
 // ── 11-Tier Cascade — Groq FIRST (เสถียรที่สุด) ──────────────────────────────
 async function aiComplete(userPrompt, systemPrompt, maxTokens=800) {
   const sys = systemPrompt || 'คุณคือวิสดอม ผู้ช่วย AI ของ Wisdom International';
-  const tiers = [
+  function detectLoop(text) {
+  if (!text || text.length < 60) return false;
+  const esc = text.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  try { if ((text.match(new RegExp(esc, "g")) || []).length >= 4) return true; } catch (e) {}
+  const seen = new Set(); let dupes = 0;
+  for (let i = 0; i + 20 <= text.length; i += 10) {
+    const c = text.slice(i, i + 20);
+    if (seen.has(c)) { if (++dupes >= 5) return true; } else seen.add(c);
+  }
+  return false;
+}
+const tiers = [
     {n:'T01:Groq-70b',      f:()=>groq(sys,userPrompt,'llama-3.3-70b-versatile',maxTokens)},
     {n:'T02:Gemini-2.0',    f:()=>gemini(sys,userPrompt,'gemini-2.0-flash',maxTokens)},
     {n:'T03:Groq-70b-v2',   f:()=>groq(sys,userPrompt,'llama-3.1-70b-versatile',maxTokens)},
@@ -97,7 +108,7 @@ async function aiComplete(userPrompt, systemPrompt, maxTokens=800) {
   for (const t of tiers) {
     try {
       const out = await t.f();
-      if (out && out.trim().length > 10) { console.log('[SUM] ok ' + t.n); return out; }
+      if (out && out.trim().length > 10 && !detectLoop(out)) { console.log('[SUM] ok ' + t.n); return out; }
     } catch(e) {
       console.log('[SUM] err ' + t.n + ': ' + (e.response?.status || e.message?.slice(0,50)));
     }
