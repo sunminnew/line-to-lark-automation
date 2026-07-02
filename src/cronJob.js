@@ -71,11 +71,13 @@ async function runPipeline() {
     const summary = await summarizeForLark(msgs, 'pipeline');
     console.log('[CRON] pipeline: ' + msgs.length + ' msgs from ' + groupName + ' -> Lark');
     await sendToLarkGroup(
-      '📊 สรุปงาน LINE - ' + groupName + ' (' + now + ')
-จำนวนข้อความ: ' + msgs.length + ' รายการ
-
-' + summary
-    );
+      [
+        '📊 สรุปงาน LINE - ' + groupName + ' (' + now + ')',
+        'จำนวนข้อความ: ' + msgs.length + ' รายการ',
+        '',
+        summary,
+      ].join(String.fromCharCode(10))
+    )
   }
 }
 // ─── Stale-chat check (every 5 min) ──────────────────────────────────────────
