@@ -1,5 +1,5 @@
 /**
- * aiSummarizer.js — อูจิน Summary Brain v2
+ * aiSummarizer.js — วิสดอม Summary Brain v2
  *
  * FIX: Groq เป็น T01 (เร็ว เสถียร) ไม่ต้องรอ Gemini timeout ก่อน
  * FIX: เอา mixtral-8x7b + gemma2-9b ออก (deprecated → 400)
@@ -22,22 +22,22 @@ function buildPrompt(mode, messages) {
 
   const map = {
     evening: {
-      sys: 'คุณคืออูจิน (우진) AI ของ Wisdom International วิเคราะห์บทสนทนาทั้งวันอย่างลึกซึ้ง ตอบเป็นภาษาไทย',
+      sys: 'คุณคือวิสดอม (위즈덤) AI ของ Wisdom International วิเคราะห์บทสนทนาทั้งวันอย่างลึกซึ้ง ตอบเป็นภาษาไทย',
       user: `บทสนทนาทั้งวัน:\n${body}\n\nสรุปในรูปแบบ:\n📊 ภาพรวมวันนี้\n🎯 ประเด็นหลัก\n⏳ งานค้าง\n✅ สิ่งที่สำเร็จ\n⚠️ ปัญหา/ความเสี่ยง\n📋 To-do พรุ่งนี้`,
       tok: 2000,
     },
     morning: {
-      sys: 'คุณคืออูจิน (우진) AI ของ Wisdom International',
+      sys: 'คุณคือวิสดอม (위즈덤) AI ของ Wisdom International',
       user: `ข้อความนอกเวลางาน:\n${body}\n\nสรุปสั้น: งานค้าง, สิ่งต้องทำ, ข้อมูลสำคัญ`,
       tok: 1000,
     },
     pipeline: {
-      sys: 'คุณคืออูจิน (우진) วิเคราะห์บทสนทนาธุรกิจ ตอบกระชับ',
+      sys: 'คุณคือวิสดอม (위즈덤) วิเคราะห์บทสนทนาธุรกิจ ตอบกระชับ',
       user: `ข้อความ:\n${body}\n\nสรุปประเด็นสำคัญ งานค้าง สิ่งต้องติดตาม`,
       tok: 800,
     },
     default: {
-      sys: 'คุณคืออูจิน (우진) AI ของ Wisdom International',
+      sys: 'คุณคือวิสดอม (위즈덤) AI ของ Wisdom International',
       user: `ข้อความ:\n${body}\n\nสรุปประเด็นสำคัญ:`,
       tok: 800,
     },
@@ -80,7 +80,7 @@ const openrouter = (sys,usr,model,tok) => {
 
 // ── 11-Tier Cascade — Groq FIRST (เสถียรที่สุด) ──────────────────────────────
 async function aiComplete(userPrompt, systemPrompt, maxTokens=800) {
-  const sys = systemPrompt || 'คุณคืออูจิน ผู้ช่วย AI ของ Wisdom International';
+  const sys = systemPrompt || 'คุณคือวิสดอม ผู้ช่วย AI ของ Wisdom International';
   const tiers = [
     {n:'T01:Groq-70b',      f:()=>groq(sys,userPrompt,'llama-3.3-70b-versatile',maxTokens)},
     {n:'T02:Gemini-2.0',    f:()=>gemini(sys,userPrompt,'gemini-2.0-flash',maxTokens)},
