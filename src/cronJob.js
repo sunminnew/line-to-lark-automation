@@ -55,20 +55,29 @@ function accumulateToDailyLog(messages) {
 async function runPipeline() {
   const messages = flushMessages();
   if (!messages.length) { console.log('[CRON] pipeline: no messages'); return; }
-
-  // Keep full-day copy for evening deep analysis
   accumulateToDailyLog(messages);
 
-    const now        = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-  const groupNames = [...new Set(messages.map(m => m.groupName).filter(Boolean))];
-  const groupLabel = groupNames.length ? ` - ${groupNames.join(', ')}` : '';
-  const summary    = await summarizeForLark(messages, 'pipeline');
-  console.log(`[CRON] pipeline: ${messages.length} msgs → Lark`);
-  await sendToLarkGroup(
-    `📊 สรุปงาน LINE${groupLabel} (${now})\nจำนวนข้อความ: ${messages.length} รายการ\n\n${summary}`
-  );
-}
+  const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
 
+  // Group messages by groupName → send separate Lark message per group
+  const byGroup = new Map();
+  for (const msg of messages) {
+    const key = msg.groupName || 'LINE';
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key).push(msg);
+  }
+
+  for (const [groupName, msgs] of byGroup) {
+    const summary = await summarizeForLark(msgs, 'pipeline');
+    console.log('[CRON] pipeline: ' + msgs.length + ' msgs from ' + groupName + ' -> Lark');
+    await sendToLarkGroup(
+      '📊 สรุปงาน LINE - ' + groupName + ' (' + now + ')
+จำนวนข้อความ: ' + msgs.length + ' รายการ
+
+' + summary
+    );
+  }
+}
 // ─── Stale-chat check (every 5 min) ──────────────────────────────────────────
 const MIN15 = 15 * 60 * 1000;
 const MIN30 = 30 * 60 * 1000;
