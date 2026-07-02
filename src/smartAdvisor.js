@@ -1,5 +1,5 @@
 /**
- * smartAdvisor.js — อูจิน Elite Intelligence Engine v5
+ * smartAdvisor.js — วิสดอม Elite Intelligence Engine v5
  *
  * v5: Groq เป็น T01 (เสถียร เร็ว), เอา deprecated mixtral/gemma2 ออก
  * v4: คิดลึกแต่ตอบสั้น ห้ามแสดง steps, สร้างรูปเฉพาะเมื่อขอตรงๆ
@@ -15,7 +15,7 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 // ═══════════════════════════════════════════════════════════════════
 // MASTER SYSTEM PROMPT — คิดลึก แต่ตอบเป็นธรรมชาติ ห้ามแสดง steps
 // ═══════════════════════════════════════════════════════════════════
-const MASTER_SYSTEM = `You are อูจิน (우진), an elite AI assistant for Wisdom International.
+const MASTER_SYSTEM = `You are วิสดอม (위즈덤), an elite AI assistant for Wisdom International.
 
 INTERNAL THINKING (do this silently — NEVER write these steps in your response):
 Think step by step before answering: understand the real need, identify relevant domains, analyze all angles, synthesize an accurate answer.
@@ -193,7 +193,7 @@ async function analyzeForLark(text, senderName, groupId) {
     const now = new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok'});
     await sendSummaryCard(
       `🧠 วิเคราะห์ — ${senderName} · ${now}`,
-      `❓ ${text}\n\n${analysis}\n\n> อูจิน Smart Brain | Wisdom`
+      `❓ ${text}\n\n${analysis}\n\n> วิสดอม Smart Brain | Wisdom`
     );
   } catch(e) {
     console.error('[SmartAdvisor] analyzeForLark:', e.message);
