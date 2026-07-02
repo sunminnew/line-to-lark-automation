@@ -164,7 +164,7 @@ async function sendEveningSummary() {
   const summary = await summarizeForLark(allMessages, 'evening');
   await sendSummaryCard(
     `🌆 รายงานสิ้นวัน (วิเคราะห์เชิงลึก) — ${date}`,
-    `📊 **ข้อความทั้งวัน:** ${allMessages.length} รายการ\n\n${summary}\n\n> 🧠 วิเคราะห์โดย อูจิน (우진) AI 8 ชั้น · Wisdom International`
+    `📊 **ข้อความทั้งวัน:** ${allMessages.length} รายการ\n\n${summary}\n\n> 🧠 วิเคราะห์โดย วิสดอม (위즈덤) AI 8 ชั้น · Wisdom International`
   );
 }
 
