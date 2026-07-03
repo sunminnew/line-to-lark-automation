@@ -43,7 +43,7 @@ const { isWorkingDay }     = require('./holidays');
 const { flushMessages }    = require('./messageStore');
 const {
   getStaleGroups, setAlertLevel,
-  flushOffHoursMessages, getAllGroupsWithOffHours,
+  flushOffHoursMessages, getAllGroupsWithOffHours, getAllKnownGroupIds,
 } = require('./messageTracker');
 const { sendToLarkGroup, sendStaleAlert, sendSummaryCard } = require('./larkMessenger');
 const { summarizeForLark } = require('./aiSummarizer');
@@ -192,13 +192,70 @@ function catchUpMorningSummary() {
   }
 }
 
+// ─── Weekly greeting helpers ────────────────────────────────────────────
+async function fetchWeather() {
+  try {
+    const r = await axios.get('https://wttr.in/Bangkok?format=%t+%C', { timeout: 5000, headers: { 'User-Agent': 'curl' } });
+    return r.data.trim();
+  } catch { return ''; }
+}
+
+async function pushToLineGroup(groupId, text) {
+  try {
+    await axios.post('https://api.line.me/v2/bot/message/push', {
+      to: groupId,
+      messages: [{ type: 'text', text }]
+    }, {
+      headers: { Authorization: 'Bearer ' + process.env.LINE_CHANNEL_ACCESS_TOKEN, 'Content-Type': 'application/json' },
+      timeout: 5000
+    });
+  } catch (e) { console.error('[CRON] push failed ' + groupId + ': ' + e.message); }
+}
+
+async function sendWeeklyGreeting(type) {
+  const weather = await fetchWeather();
+  const weatherLine = weather ? String.fromCharCode(10) + String.fromCharCode(10) + String.fromCharCode(9728) + ' Bangkok: ' + weather : '';
+  const groupIds = getAllKnownGroupIds();
+  if (!groupIds.length) { console.log('[CRON] weekly greeting: no known groups'); return; }
+  console.log('[CRON] weekly greeting (' + type + '): sending to ' + groupIds.length + ' groups');
+  let msg;
+  if (type === 'friday') {
+    msg = [
+      '🌟 สวัสดีวันศุกร์ค่า! 🌟',
+      'ขอให้ทุกคนมีความสุขในวันหยุดสุดสัปดาห์นะคะ 🎉',
+      '',
+      '🌟 Happy Friday! 🌟',
+      'Wishing you a wonderful and relaxing weekend! 😄',
+      '',
+      '🌟 금요일이에요! 🌟',
+      '즉거운 주말 되세요! 🎊',
+    ].join(String.fromCharCode(10)) + weatherLine;
+  } else {
+    msg = [
+      '☀️ สวัสดีวันจันทร์ค่า! ☀️',
+      'พร้อมเริ่มต้นสัปดาห์ใหม่ที่เต็มไปด้วยพลังงานกันนะคะ 💪',
+      '',
+      '☀️ Good Monday Morning! ☀️',
+      "Let's make this a great and productive week! 🌟",
+      '',
+      '☀️ 월요일이에요! ☀️',
+      '새로운 한 주도 화이팅! 💪',
+    ].join(String.fromCharCode(10)) + weatherLine;
+  }
+  for (const gid of groupIds) {
+    await pushToLineGroup(gid, msg);
+  }
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 function startCronJob() {
   cron.schedule('0 * * * *',      runPipeline,        { timezone: 'Asia/Bangkok' });
   cron.schedule('*/5 * * * *',    checkStaleChats,    { timezone: 'Asia/Bangkok' });
   cron.schedule('30 8 * * 1-5',   sendMorningSummary, { timezone: 'Asia/Bangkok' });
   cron.schedule('45 17 * * 1-5',  sendEveningSummary, { timezone: 'Asia/Bangkok' });
-  console.log('[CRON] 4 jobs started (BKK) — dailyLog accumulation active');
+  cron.schedule('0 17 * * 5', () => sendWeeklyGreeting('friday'), { timezone: 'Asia/Bangkok' });
+    cron.schedule('0 8 * * 1', () => sendWeeklyGreeting('monday'), { timezone: 'Asia/Bangkok' });
+    console.log('[CRON] 6 jobs started (BKK) — dailyLog + weekly greetings active');
   setTimeout(catchUpMorningSummary, 5000);
 }
 
