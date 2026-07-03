@@ -228,20 +228,20 @@ async function sendWeeklyGreeting(type) {
     msg = [
       'ขอให้ทุกท่านมีวันหยุดสุดสัปดาห์ที่ดีนะครับ 😊',
       '',
-      'TGIF! 🎉 Hope you all get to unwind and recharge this weekend.',
+      'Wishing everyone a wonderful and restful weekend. 😊',
       '',
-      '이번 주도 수고 많으셨습니다! 🙏',
-      '편안한 주말 보내시고 푹 쉬세요 😊',
+      '이번 주도 수고 많으셨습니다. 🙏',
+      '편안한 주말 되시길 바랍니다.',
     ].join(String.fromCharCode(10)) + weatherLine;
   } else {
     msg = [
       'สวัสดีวันจันทร์ครับ หวังว่าทุกท่านพักผ่อนได้ดีนะครับ',
       'วันนี้เราพร้อมแล้ว ติดต่อได้เลยครับ 💼',
       '',
-      'New week, fresh start! 💪 Let\'s make it a great one.',
+      'Good morning. Wishing everyone a productive and pleasant week ahead. 🌟',
       '',
-      '새로운 한 주가 시작됐습니다! 🌟',
-      '이번 주도 모두 파이팅! 💪',
+      '새로운 한 주가 시작되었습니다. 🌟',
+      '좋은 한 주 되시길 바랍니다.',
     ].join(String.fromCharCode(10)) + weatherLine;
   }
   for (const gid of groupIds) {
