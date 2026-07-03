@@ -83,12 +83,23 @@ async function aiComplete(userPrompt, systemPrompt, maxTokens=800) {
   const sys = systemPrompt || 'คุณคือวิสดอม ผู้ช่วย AI ของ Wisdom International';
   function detectLoop(text) {
   if (!text || text.length < 60) return false;
+  // AI internal tokens leaking out
+  if (/<SEQ_BEG>|<SEQ_END>|<pad>|<unk>/.test(text)) return true;
+  // Substring seed repetition
   const esc = text.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  try { if ((text.match(new RegExp(esc, "g")) || []).length >= 4) return true; } catch (e) {}
+  try { if ((text.match(new RegExp(esc, 'g')) || []).length >= 4) return true; } catch (e) {}
+  // Sliding window char-level
   const seen = new Set(); let dupes = 0;
   for (let i = 0; i + 20 <= text.length; i += 10) {
     const c = text.slice(i, i + 20);
     if (seen.has(c)) { if (++dupes >= 5) return true; } else seen.add(c);
+  }
+  // Word-level repetition (e.g. "Chinese-Chinese-Chinese...")
+  const words = text.split(/[\s\-\.]+/).filter(w => w.length > 2);
+  if (words.length >= 8) {
+    const wMap = new Map();
+    for (const w of words) wMap.set(w, (wMap.get(w) || 0) + 1);
+    if (Math.max(...wMap.values()) >= 6) return true;
   }
   return false;
 }
