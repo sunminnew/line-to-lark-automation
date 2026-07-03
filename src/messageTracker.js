@@ -58,6 +58,10 @@ function getAllGroupsWithOffHours() {
   return [...offHoursStore.keys()];
 }
 
+function getAllKnownGroupIds() {
+  return [...groupActivity.keys()];
+}
+
 module.exports = {
   recordActivity,
   getStaleGroups,
@@ -65,5 +69,6 @@ module.exports = {
   getAlertLevel,
   addOffHoursMessage,
   flushOffHoursMessages,
-  getAllGroupsWithOffHours,
+  getAllGroupsWithOffHours,,
+  getAllKnownGroupIds
 };
