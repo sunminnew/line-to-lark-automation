@@ -13,14 +13,27 @@ const cron = require('node-cron');
 const axios = require('axios');
 const groupNameCache = new Map();
 async function getGroupName(groupId) {
-  if (!groupId) return groupId;
+  if (!groupId || groupId === 'unknown') return groupId;
   if (groupNameCache.has(groupId)) return groupNameCache.get(groupId);
   try {
-    const r = await axios.get(
-      'https://api.line.me/v2/bot/group/' + groupId + '/summary',
-      { headers: { Authorization: 'Bearer ' + process.env.LINE_CHANNEL_ACCESS_TOKEN }, timeout: 3000 }
-    );
-    const name = r.data.groupName || groupId;
+    let url, nameKey;
+    if (groupId.startsWith('C')) {
+      url = 'https://api.line.me/v2/bot/group/' + groupId + '/summary';
+      nameKey = 'groupName';
+    } else if (groupId.startsWith('R')) {
+      url = 'https://api.line.me/v2/bot/room/' + groupId + '/summary';
+      nameKey = 'roomName';
+    } else if (groupId.startsWith('U')) {
+      url = 'https://api.line.me/v2/bot/profile/' + groupId;
+      nameKey = 'displayName';
+    } else {
+      return groupId;
+    }
+    const r = await axios.get(url, {
+      headers: { Authorization: 'Bearer ' + process.env.LINE_CHANNEL_ACCESS_TOKEN },
+      timeout: 3000
+    });
+    const name = r.data[nameKey] || groupId;
     groupNameCache.set(groupId, name);
     return name;
   } catch { return groupId; }
