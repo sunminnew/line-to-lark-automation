@@ -226,14 +226,11 @@ async function sendWeeklyGreeting(type) {
   let msg;
   if (type === 'friday') {
     msg = [
-      'สวัสดีครับ สัปดาห์นี้ขอบคุณทุกท่านมากนะครับ 🙏',
-      'ขอให้พักผ่อนได้เต็มที่ แล้วพบกันใหม่วันจันทร์ครับ',
+      'ขอให้ทุกท่านมีวันหยุดสุดสัปดาห์ที่ดีนะครับ 😊',
       '',
-      'Thank you all for your hard work this week! 🎉',
-      'Wishing you a restful weekend — see you Monday.',
+      'Have a great weekend everyone!',
       '',
-      '한 주 동안 감사했습니다! 😊',
-      '편안한 주말 보내시고, 월요일에 뵙겠습니다.',
+      '즐거운 주말 되세요! 😊',
     ].join(String.fromCharCode(10)) + weatherLine;
   } else {
     msg = [
