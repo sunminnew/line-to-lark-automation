@@ -226,29 +226,25 @@ async function sendWeeklyGreeting(type) {
   let msg;
   if (type === 'friday') {
     msg = [
-      'หมดสัปดาห์แล้วนะครับ 🌸',
-      'ขอบคุณทุกคนที่ทำงานหนักมาตลอดสัปดาห์นะครับ',
-      'พักผ่อนให้เต็มที่ แล้วพบกันใหม่วันจันทร์นะครับ',
+      'สวัสดีครับ สัปดาห์นี้ขอบคุณทุกท่านมากนะครับ 🙏',
+      'ขอให้พักผ่อนได้เต็มที่ แล้วพบกันใหม่วันจันทร์ครับ',
       '',
-      "That's a wrap for this week! 🎉",
-      'Thank you all for the hard work.',
-      "Enjoy your time off — you've earned it.",
+      'Thank you all for your hard work this week! 🎉',
+      'Wishing you a restful weekend — see you Monday.',
       '',
-      '한 주 동안 정말 수고 많으셨어요! 😊',
-      '편안한 주말 보내시고, 월요일에 다시 만나요.',
+      '한 주 동안 감사했습니다! 😊',
+      '편안한 주말 보내시고, 월요일에 뵙겠습니다.',
     ].join(String.fromCharCode(10)) + weatherLine;
   } else {
     msg = [
-      'สวัสดีวันจันทร์นะครับ 🌤️',
-      'หวังว่าทุกคนพักผ่อนได้ดีนะครับ',
-      'วันนี้เราเริ่มกันได้เลยนะครับ 💼',
+      'สวัสดีวันจันทร์ครับ หวังว่าทุกท่านพักผ่อนได้ดีนะครับ',
+      'วันนี้เราพร้อมแล้ว ติดต่อได้เลยครับ 💼',
       '',
-      'Morning everyone! 🌟',
-      'Hope you had a great weekend.',
-      "Let's kick off a good week together.",
+      'Good morning! Hope everyone had a great weekend.',
+      "We're ready to go — feel free to reach out anytime. 🌟",
       '',
-      '다들 주말 잘 쉬셨나요? 😊',
-      '새로운 한 주도 함께 잘 해봐요 💪',
+      '월요일 아침입니다! 주말 잘 보내셨나요? 😊',
+      '오늘도 잘 부탁드립니다 💪',
     ].join(String.fromCharCode(10)) + weatherLine;
   }
   for (const gid of groupIds) {
