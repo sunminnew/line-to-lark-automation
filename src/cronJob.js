@@ -193,9 +193,9 @@ function catchUpMorningSummary() {
 }
 
 // ─── Weekly greeting helpers ────────────────────────────────────────────
-async function fetchWeather() {
+async function fetchWeather(city) {
   try {
-    const r = await axios.get('https://wttr.in/Bangkok?format=%t+%C', { timeout: 5000, headers: { 'User-Agent': 'curl' } });
+    const r = await axios.get('https://wttr.in/' + city + '?format=%t+%C', { timeout: 5000, headers: { 'User-Agent': 'curl' } });
     return r.data.trim();
   } catch { return ''; }
 }
@@ -213,8 +213,13 @@ async function pushToLineGroup(groupId, text) {
 }
 
 async function sendWeeklyGreeting(type) {
-  const weather = await fetchWeather();
-  const weatherLine = weather ? String.fromCharCode(10) + String.fromCharCode(10) + String.fromCharCode(9728) + ' Bangkok: ' + weather : '';
+  const [bkkW, seoW] = await Promise.all([fetchWeather('Bangkok'), fetchWeather('Seoul')]);
+  const weatherLine = (bkkW || seoW) ? (
+    String.fromCharCode(10) + String.fromCharCode(10) +
+    (bkkW ? String.fromCharCode(9728) + ' Bangkok: ' + bkkW : '') +
+    (bkkW && seoW ? String.fromCharCode(10) : '') +
+    (seoW ? String.fromCharCode(9728) + ' Seoul: ' + seoW : '')
+  ) : '';
   const groupIds = getAllKnownGroupIds();
   if (!groupIds.length) { console.log('[CRON] weekly greeting: no known groups'); return; }
   console.log('[CRON] weekly greeting (' + type + '): sending to ' + groupIds.length + ' groups');
@@ -253,8 +258,8 @@ function startCronJob() {
   cron.schedule('*/5 * * * *',    checkStaleChats,    { timezone: 'Asia/Bangkok' });
   cron.schedule('30 8 * * 1-5',   sendMorningSummary, { timezone: 'Asia/Bangkok' });
   cron.schedule('45 17 * * 1-5',  sendEveningSummary, { timezone: 'Asia/Bangkok' });
-  cron.schedule('0 17 * * 5', () => sendWeeklyGreeting('friday'), { timezone: 'Asia/Bangkok' });
-    cron.schedule('0 8 * * 1', () => sendWeeklyGreeting('monday'), { timezone: 'Asia/Bangkok' });
+  cron.schedule('0 18 * * 5', () => sendWeeklyGreeting('friday'), { timezone: 'Asia/Bangkok' });
+    cron.schedule('0 9 * * 1', () => sendWeeklyGreeting('monday'), { timezone: 'Asia/Bangkok' });
     console.log('[CRON] 6 jobs started (BKK) — dailyLog + weekly greetings active');
   setTimeout(catchUpMorningSummary, 5000);
 }
