@@ -1,7 +1,9 @@
 /**
  * lineHandler.js
- * Bidirectional translation: Thai<->Korean (and English->both) via 11-tier AI cascade.
- * All models are FREE tier only. T01 = Gemini 2.5 Pro (smartest free model).
+ * Bidirectional translation: Thai<->Korean (and English->both).
+ * T01: Microsoft Azure Translator — dedicated engine, FREE 2M chars/month (no hallucination)
+ * T02: MyMemory API            — dedicated engine, FREE 10K chars/day, no key needed
+ * T03–T13: 11-tier FREE AI cascade fallback (Gemini, Groq, Cerebras, OpenRouter)
  */
 const axios  = require('axios');
 const crypto = require('crypto');
@@ -10,7 +12,6 @@ const LINE_API_BASE  = 'https://api.line.me/v2/bot';
 const ACCESS_TOKEN   = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 
-
 // ── Language detection ──
 const THAI_RE    = /[฀-๿]/;
 const KOREAN_RE  = /[가-힯ᄀ-ᇿ㄰-㆏]/;
@@ -18,7 +19,6 @@ const ENGLISH_RE = /^[A-Za-z0-9\s\p{P}\p{S}]+$/u;
 const URL_RE     = /https?:\/\/[^\s]+/g;
 const MAX_CHARS  = 3000;
 
-// ── Translation prompts (convey intent, not just words) ──
 const NAME_RULE =
   'Person names (Thai, Korean, or any language): write them in English Latin script ' +
   '(romanization). Examples: สมชาย->Somchai, ณัฐพล->Natthapon, 김민준->Kim Minjun, ' +
@@ -62,9 +62,16 @@ const PROMPT_EN_TO_TH =
   'Output ONLY the Thai translation. ' + NAME_RULE +
   ' Keep numbers and technical terms as-is.';
 
-// ── Timeouts ──
 const CALL_TIMEOUT_MS  = 6000;
 const OUTER_TIMEOUT_MS = 25000;
+
+// ── Language pair lookup ──
+const LANG_PAIR = {
+  th_to_kr: { from: 'th', to: 'ko', myMemory: 'th|ko' },
+  kr_to_th: { from: 'ko', to: 'th', myMemory: 'ko|th' },
+  en_to_kr: { from: 'en', to: 'ko', myMemory: 'en|ko' },
+  en_to_th: { from: 'en', to: 'th', myMemory: 'en|th' },
+};
 
 function withTimeout(promise, ms) {
   return Promise.race([
@@ -73,11 +80,58 @@ function withTimeout(promise, ms) {
   ]);
 }
 
-// ── Provider callers ──
+// ── T01: Microsoft Azure Translator (FREE: 2M chars/month) ──
+// Setup: portal.azure.com -> Create Resource -> Translator -> Free tier F0
+// Add env vars: AZURE_TRANSLATOR_KEY, AZURE_TRANSLATOR_REGION (default: eastasia)
+async function callAzureTranslator(text, dir) {
+  const key = process.env.AZURE_TRANSLATOR_KEY;
+  if (!key) throw new Error('no AZURE_TRANSLATOR_KEY');
+  const pair = LANG_PAIR[dir];
+  if (!pair) throw new Error('unknown dir: ' + dir);
+  const res = await withTimeout(axios.post(
+    'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0' +
+      '&from=' + pair.from + '&to=' + pair.to,
+    [{ Text: text }],
+    {
+      headers: {
+        'Ocp-Apim-Subscription-Key': key,
+        'Ocp-Apim-Subscription-Region': process.env.AZURE_TRANSLATOR_REGION || 'eastasia',
+        'Content-Type': 'application/json',
+      },
+    }
+  ), CALL_TIMEOUT_MS);
+  const out = res.data[0]?.translations?.[0]?.text;
+  if (!out) throw new Error('empty azure response');
+  return out.trim();
+}
+
+// ── T02: MyMemory (FREE: 10K chars/day no key, 50K/day with MYMEMORY_EMAIL) ──
+// Dedicated translation engine — no hallucination, always available, no signup needed
+async function callMyMemory(text, dir) {
+  const pair = LANG_PAIR[dir];
+  if (!pair) throw new Error('unknown dir: ' + dir);
+  const email = process.env.MYMEMORY_EMAIL || '';
+  let url = 'https://api.mymemory.translated.net/get?q=' +
+    encodeURIComponent(text) + '&langpair=' + pair.myMemory;
+  if (email) url += '&de=' + encodeURIComponent(email);
+  const res = await withTimeout(axios.get(url), CALL_TIMEOUT_MS);
+  const out = res.data?.responseData?.translatedText;
+  if (!out || out.toUpperCase().startsWith('PLEASE SELECT') ||
+      out.toUpperCase().startsWith('NO QUERY') ||
+      out.toUpperCase().startsWith('QUERY LENGTH')) {
+    throw new Error('mymemory quota/error: ' + out);
+  }
+  if (res.data?.responseStatus !== 200) {
+    throw new Error('mymemory status ' + res.data?.responseStatus);
+  }
+  return out.trim();
+}
+
+// ── LLM callers ──
 async function callGemini(model, systemPrompt, text) {
   const res = await withTimeout(axios.post(
     'https://generativelanguage.googleapis.com/v1beta/models/' + model +
-      ':generateContent?key=' + process.env.GEMINI_API_KEY,
+    ':generateContent?key=' + process.env.GEMINI_API_KEY,
     {
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts: [{ text: text }] }],
@@ -130,19 +184,22 @@ async function callOpenRouter(model, systemPrompt, text) {
   return res.data.choices[0].message.content.trim();
 }
 
-// ── 11-tier cascade: SMARTEST FREE models first ──
+// ── 13-tier cascade ──
+// fn(prompt, text, dir) — T01/T02 dedicated engines use dir; T03-T13 LLMs use prompt+text
 const CASCADE = [
-  { id: 'T01', fn: (p, t) => callGemini('gemini-2.5-pro',              p, t) }, // smartest free
-  { id: 'T02', fn: (p, t) => callGroq('moonshotai/kimi-k2-instruct',   p, t) }, // Kimi K2 top free
-  { id: 'T03', fn: (p, t) => callGemini('gemini-2.5-flash',            p, t) }, // fast + smart
-  { id: 'T04', fn: (p, t) => callGemini('gemini-2.0-flash',            p, t) }, // reliable
-  { id: 'T05', fn: (p, t) => callGroq('llama-3.3-70b-versatile',       p, t) }, // Meta 70B
-  { id: 'T06', fn: (p, t) => callGroq('deepseek-r1-distill-llama-70b', p, t) }, // DeepSeek R1
-  { id: 'T07', fn: (p, t) => callGroq('qwen-qwq-32b',                  p, t) }, // Qwen reasoning
-  { id: 'T08', fn: (p, t) => callCerebras('llama3.3-70b',              p, t) }, // Cerebras fast
-  { id: 'T09', fn: (p, t) => callGemini('gemini-1.5-flash-latest',     p, t) }, // Gemini 1.5
-  { id: 'T10', fn: (p, t) => callOpenRouter('meta-llama/llama-3.3-70b-instruct:free', p, t) },
-  { id: 'T11', fn: (p, t) => callGroq('llama-3.1-8b-instant',          p, t) }, // last resort
+  { id: 'T01', fn: (p, t, d) => callAzureTranslator(t, d) },                    // Dedicated: 2M chars/mo
+  { id: 'T02', fn: (p, t, d) => callMyMemory(t, d) },                            // Dedicated: 10K chars/day
+  { id: 'T03', fn: (p, t) => callGemini('gemini-2.5-pro',              p, t) }, // Smartest free LLM
+  { id: 'T04', fn: (p, t) => callGroq('moonshotai/kimi-k2-instruct',   p, t) }, // Kimi K2
+  { id: 'T05', fn: (p, t) => callGemini('gemini-2.5-flash',            p, t) }, // Fast + smart
+  { id: 'T06', fn: (p, t) => callGemini('gemini-2.0-flash',            p, t) }, // Reliable
+  { id: 'T07', fn: (p, t) => callGroq('llama-3.3-70b-versatile',       p, t) }, // Meta 70B
+  { id: 'T08', fn: (p, t) => callGroq('deepseek-r1-distill-llama-70b', p, t) }, // DeepSeek R1
+  { id: 'T09', fn: (p, t) => callGroq('qwen-qwq-32b',                  p, t) }, // Qwen reasoning
+  { id: 'T10', fn: (p, t) => callCerebras('llama3.3-70b',              p, t) }, // Cerebras fast
+  { id: 'T11', fn: (p, t) => callGemini('gemini-1.5-flash-latest',     p, t) }, // Gemini 1.5
+  { id: 'T12', fn: (p, t) => callOpenRouter('meta-llama/llama-3.3-70b-instruct:free', p, t) },
+  { id: 'T13', fn: (p, t) => callGroq('llama-3.1-8b-instant',          p, t) }, // Last resort
 ];
 
 // ── Output validation ──
@@ -177,7 +234,7 @@ async function translateWithCascade(text, systemPrompt, dir) {
   for (const tier of CASCADE) {
     if (Date.now() >= deadline) { console.warn('[TR] outer timeout at ' + tier.id); break; }
     try {
-      const out = await tier.fn(systemPrompt, text);
+      const out = await tier.fn(systemPrompt, text, dir);
       if (!isBad(out, dir)) {
         console.log('[TR] ' + tier.id + ' ok dir=' + dir);
         return out;
@@ -207,8 +264,8 @@ async function translateAll(rawText) {
     ? stripped.slice(0, MAX_CHARS) + '\n...(truncated)'
     : stripped;
 
-  if (THAI_RE.test(text))    return { kr: await translateWithCascade(text, PROMPT_TH_TO_KR, 'th_to_kr') };
-  if (KOREAN_RE.test(text))  return { th: await translateWithCascade(text, PROMPT_KR_TO_TH, 'kr_to_th') };
+  if (THAI_RE.test(text))   return { kr: await translateWithCascade(text, PROMPT_TH_TO_KR, 'th_to_kr') };
+  if (KOREAN_RE.test(text)) return { th: await translateWithCascade(text, PROMPT_KR_TO_TH, 'kr_to_th') };
   if (ENGLISH_RE.test(text) && text.trim().length > 3) {
     const [kr, th] = await Promise.all([
       translateWithCascade(text, PROMPT_EN_TO_KR, 'en_to_kr'),
@@ -242,8 +299,8 @@ async function getSenderName(event) {
   try {
     const { userId, groupId, roomId } = event.source;
     let url;
-    if (groupId)     url = LINE_API_BASE + '/group/'   + groupId + '/member/' + userId;
-    else if (roomId) url = LINE_API_BASE + '/room/'    + roomId  + '/member/' + userId;
+    if (groupId)     url = LINE_API_BASE + '/group/' + groupId + '/member/' + userId;
+    else if (roomId) url = LINE_API_BASE + '/room/' + roomId + '/member/' + userId;
     else             url = LINE_API_BASE + '/profile/' + userId;
     const res = await axios.get(url, { headers: { Authorization: 'Bearer ' + ACCESS_TOKEN } });
     return res.data.displayName ?? userId;
@@ -253,3 +310,4 @@ async function getSenderName(event) {
 }
 
 module.exports = { verifySignature, translateAll, replyMessages, getSenderName };
+// NOTE: OOO_MESSAGE removed completely
