@@ -10,10 +10,6 @@ const LINE_API_BASE  = 'https://api.line.me/v2/bot';
 const ACCESS_TOKEN   = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 
-const OOO_MESSAGE =
-  'สวัสดีค่า/ครับ ขณะนี้อยู่นอกเวลาทำการ (09.00-18.00 น.) ' +
-  'ทางทีมงานได้รับข้อความของท่านแล้ว และจะรีบติดต่อกลับทันทีในเวลาทำการ ' +
-  'ขอบพระคุณที่ไว้วางใจค่า/ครับ';
 
 // ── Language detection ──
 const THAI_RE    = /[฀-๿]/;
@@ -259,4 +255,4 @@ async function getSenderName(event) {
   }
 }
 
-module.exports = { verifySignature, translateAll, replyMessages, getSenderName, OOO_MESSAGE };
+module.exports = { verifySignature, translateAll, replyMessages, getSenderName };
