@@ -8,8 +8,8 @@
  * Chinese  -> Thai + Korean
  * English  -> Thai + Korean
  *
- * T01: Microsoft Azure Translator — dedicated engine, FREE 2M chars/month (no hallucination)
- * T02: MyMemory API            — dedicated engine, FREE 10K chars/day, no key needed
+ * T01: Lingva Translate         — dedicated engine, FREE unlimited, no key (wraps Google Translate)
+ * T02: MyMemory API            — dedicated engine, FREE 50K chars/day with email, no key
  * T03–T13: 11-tier FREE AI cascade fallback (Gemini, Groq, Cerebras, OpenRouter)
  */
 const axios  = require('axios');
@@ -97,7 +97,7 @@ const PROMPT_JA_TO_KR =
   '- Output must contain NO Japanese or Chinese characters.';
 
 const PROMPT_ZH_TO_TH =
-  'You are a strict Chinese-to-Thai translator. Translate ONLY — explain, or discuss the content.\n\n' +
+  'You are a strict Chinese-to-Thai translator. Translate ONLY — never respond, explain, or discuss the content.\n\n' +
   'RULES:\n' +
   '- Output ONLY the Thai translation. Nothing else.\n' +
   '- NEVER add, remove, invent, or change any information.\n' +
@@ -139,14 +139,14 @@ const OUTER_TIMEOUT_MS = 25000;
 
 // ── Language pair lookup ──
 const LANG_PAIR = {
-  th_to_kr: { from: 'th', to: 'ko', myMemory: 'th|ko' },
-  kr_to_th: { from: 'ko', to: 'th', myMemory: 'ko|th' },
-  ja_to_th: { from: 'ja', to: 'th', myMemory: 'ja|th' },
-  ja_to_kr: { from: 'ja', to: 'ko', myMemory: 'ja|ko' },
-  zh_to_th: { from: 'zh', to: 'th', myMemory: 'zh|th' },
-  zh_to_kr: { from: 'zh', to: 'ko', myMemory: 'zh|ko' },
-  en_to_kr: { from: 'en', to: 'ko', myMemory: 'en|ko' },
-  en_to_th: { from: 'en', to: 'th', myMemory: 'en|th' },
+  th_to_kr: { from: 'th', to: 'ko', lingva: ['th', 'ko'], myMemory: 'th|ko' },
+  kr_to_th: { from: 'ko', to: 'th', lingva: ['ko', 'th'], myMemory: 'ko|th' },
+  ja_to_th: { from: 'ja', to: 'th', lingva: ['ja', 'th'], myMemory: 'ja|th' },
+  ja_to_kr: { from: 'ja', to: 'ko', lingva: ['ja', 'ko'], myMemory: 'ja|ko' },
+  zh_to_th: { from: 'zh', to: 'th', lingva: ['zh-CN', 'th'], myMemory: 'zh|th' },
+  zh_to_kr: { from: 'zh', to: 'ko', lingva: ['zh-CN', 'ko'], myMemory: 'zh|ko' },
+  en_to_kr: { from: 'en', to: 'ko', lingva: ['en', 'ko'], myMemory: 'en|ko' },
+  en_to_th: { from: 'en', to: 'th', lingva: ['en', 'th'], myMemory: 'en|th' },
 };
 
 function withTimeout(promise, ms) {
@@ -156,29 +156,33 @@ function withTimeout(promise, ms) {
   ]);
 }
 
-// ── T01: Microsoft Azure Translator (FREE: 2M chars/month) ──
-// Setup: portal.azure.com -> Create Resource -> Translator -> Free tier F0
-// Add env vars: AZURE_TRANSLATOR_KEY, AZURE_TRANSLATOR_REGION (default: eastasia)
-async function callAzureTranslator(text, dir) {
-  const key = process.env.AZURE_TRANSLATOR_KEY;
-  if (!key) throw new Error('no AZURE_TRANSLATOR_KEY');
+// ── T01: Lingva Translate (FREE: no key, no limit, wraps Google Translate quality) ──
+// Public instance: lingva.ml — no signup, no billing, works immediately
+// Fallback instances tried in order if primary is down
+const LINGVA_INSTANCES = [
+  'https://lingva.ml',
+  'https://lingva.garudalinux.org',
+  'https://translate.plausibility.cloud',
+];
+async function callLingva(text, dir) {
   const pair = LANG_PAIR[dir];
-  if (!pair) throw new Error('unknown dir: ' + dir);
-  const res = await withTimeout(axios.post(
-    'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0' +
-      '&from=' + pair.from + '&to=' + pair.to,
-    [{ Text: text }],
-    {
-      headers: {
-        'Ocp-Apim-Subscription-Key': key,
-        'Ocp-Apim-Subscription-Region': process.env.AZURE_TRANSLATOR_REGION || 'eastasia',
-        'Content-Type': 'application/json',
-      },
-    }
-  ), CALL_TIMEOUT_MS);
-  const out = res.data[0]?.translations?.[0]?.text;
-  if (!out) throw new Error('empty azure response');
-  return out.trim();
+  if (!pair || !pair.lingva) throw new Error('unknown dir: ' + dir);
+  const [src, tgt] = pair.lingva;
+  // Lingva puts text in URL path — truncate to 1000 chars to avoid 414
+  const safe = text.length > 1000 ? text.slice(0, 1000) : text;
+  const encoded = encodeURIComponent(safe);
+  for (const base of LINGVA_INSTANCES) {
+    try {
+      const res = await withTimeout(
+        axios.get(`${base}/api/v1/${src}/${tgt}/${encoded}`,
+          { headers: { Accept: 'application/json' } }),
+        CALL_TIMEOUT_MS
+      );
+      const out = res.data?.translation;
+      if (out && out.trim().length > 0) return out.trim();
+    } catch (_) { /* try next instance */ }
+  }
+  throw new Error('all lingva instances failed');
 }
 
 // ── T02: MyMemory (FREE: 10K chars/day no key, 50K/day with MYMEMORY_EMAIL) ──
@@ -262,8 +266,8 @@ async function callOpenRouter(model, systemPrompt, text) {
 // ── 13-tier cascade ──
 // fn(prompt, text, dir) — T01/T02 dedicated engines use dir; T03-T13 LLMs use prompt+text
 const CASCADE = [
-  { id: 'T01', fn: (p, t, d) => callAzureTranslator(t, d) },                    // Dedicated: 2M chars/mo
-  { id: 'T02', fn: (p, t, d) => callMyMemory(t, d) },                            // Dedicated: 10K chars/day
+  { id: 'T01', fn: (p, t, d) => callLingva(t, d) },                             // Dedicated: free, no key
+  { id: 'T02', fn: (p, t, d) => callMyMemory(t, d) },                            // Dedicated: 50K chars/day
   { id: 'T03', fn: (p, t) => callGemini('gemini-2.5-pro',              p, t) }, // Smartest free LLM
   { id: 'T04', fn: (p, t) => callGroq('moonshotai/kimi-k2-instruct',   p, t) }, // Kimi K2
   { id: 'T05', fn: (p, t) => callGemini('gemini-2.5-flash',            p, t) }, // Fast + smart
