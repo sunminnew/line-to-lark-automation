@@ -263,7 +263,6 @@ app.post('/webhook', async (req,res) => {
     // ── ③ Summary keyword ──────────────────────────────────────────────────
     if (isSummaryRequest(text)) {
       try {
-        await replyMessages(event.replyToken, [{type:'text',text:'📋 กำลังสรุปงานและส่งไป Lark นะครับ รอสักครู่...'}]);
         const msgs = flushMessages();
         if (!msgs.length) {
           await sendSummaryCard('📋 ไม่มีข้อความที่จะสรุป','ยังไม่มีข้อความสะสมในระบบครับ');
