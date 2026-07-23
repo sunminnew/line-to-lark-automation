@@ -64,8 +64,13 @@ const PROMPT_TH_TO_KR =
   '- Mixed register → match the dominant tone of the message\n\n' +
 
   'SPACING & FORMAT:\n' +
+  'CRITICAL — LINE BREAKS: You MUST preserve every newline (\\n) from the source EXACTLY.\n' +
+  '- Numbered list items (1. 2. 3. ...) → each item on its OWN separate line\n' +
+  '- Bullet points → each bullet on its OWN separate line\n' +
+  '- Paragraph breaks → keep as-is, do NOT merge paragraphs\n' +
+  '- NEVER merge multiple lines into a single sentence or paragraph\n' +
+  '- NEVER add or remove line breaks\n' +
   '- Apply correct Korean word spacing (띄어쓰기) throughout\n' +
-  '- Preserve paragraph breaks, bullet points, numbered lists\n' +
   '- One idea = one sentence. Never duplicate.\n\n' +
 
   'KEEP UNCHANGED: English words, numbers, URLs, emojis, hashtags, brand/product names\n' +
@@ -100,8 +105,13 @@ const PROMPT_KR_TO_TH =
   '- Business/professional → สุภาพมืออาชีพ (ครับ/ค่ะ throughout)\n\n' +
 
   'SPACING & FORMAT:\n' +
+  'CRITICAL — LINE BREAKS: You MUST preserve every newline (\\n) from the source EXACTLY.\n' +
+  '- Numbered list items (1. 2. 3. ...) → each item on its OWN separate line\n' +
+  '- Bullet points → each bullet on its OWN separate line\n' +
+  '- Paragraph breaks → keep as-is, do NOT merge paragraphs\n' +
+  '- NEVER merge multiple lines into a single sentence or paragraph\n' +
+  '- NEVER add or remove line breaks\n' +
   '- Apply correct Thai word spacing and punctuation\n' +
-  '- Preserve paragraph breaks, bullet points, numbered lists\n' +
   '- One idea = one sentence. Never duplicate.\n\n' +
 
   'KEEP UNCHANGED: English words, numbers, URLs, emojis, hashtags, brand/product names\n' +
@@ -116,7 +126,7 @@ const PROMPT_ZH_TO_TH =
   '- Casual/colloquial Chinese → natural informal Thai (ภาษาพูด).\n' +
   '- Formal written Chinese → formal polite Thai (ภาษาสุภาพ ครับ/ค่ะ).\n' +
   '- Apply correct Thai word spacing throughout.\n' +
-  '- Preserve paragraph breaks and list structure.\n' +
+  'CRITICAL — LINE BREAKS: Preserve every newline (\\n) EXACTLY. Numbered items (1. 2. 3.) each on their own line. NEVER merge lines.\n' +
   '- One idea = one sentence. Never duplicate.\n' +
   '- KEEP UNCHANGED: English words, numbers, URLs, emojis, hashtags.\n' +
   NAME_RULE + '\n' +
@@ -130,7 +140,7 @@ const PROMPT_ZH_TO_KR =
   '- Casual/colloquial Chinese → natural informal Korean (해요체/해체).\n' +
   '- Formal written Chinese → formal Korean (합쇼체).\n' +
   '- Apply correct Korean word spacing (띄어쓰기) throughout.\n' +
-  '- Preserve paragraph breaks and list structure.\n' +
+  'CRITICAL — LINE BREAKS: Preserve every newline (\\n) EXACTLY. Numbered items (1. 2. 3.) each on their own line. NEVER merge lines.\n' +
   '- One idea = one sentence. Never duplicate.\n' +
   '- KEEP UNCHANGED: English words, numbers, URLs, emojis, hashtags.\n' +
   NAME_RULE + '\n' +
@@ -151,7 +161,7 @@ const PROMPT_EN_TO_KR =
   '- Output ONLY the Korean translation. Nothing else.\n' +
   '- Apply correct Korean word spacing (띄어쓰기) throughout.\n' +
   '- Match register: casual English → 해요체, formal English → 합쇼체.\n' +
-  '- Preserve paragraph breaks and list structure.\n' +
+  'CRITICAL — LINE BREAKS: Preserve every newline (\\n) EXACTLY. Numbered items (1. 2. 3.) each on their own line. NEVER merge lines.\n' +
   '- KEEP UNCHANGED: numbers, URLs, emojis, hashtags, brand names.\n' +
   NAME_RULE;
 
@@ -170,7 +180,7 @@ const PROMPT_EN_TO_TH =
   '- Output ONLY the Thai translation. Nothing else.\n' +
   '- Apply correct Thai word spacing throughout.\n' +
   '- Match register: casual English → ภาษาพูด (นะ อ่ะ), formal → ครับ/ค่ะ.\n' +
-  '- Preserve paragraph breaks and list structure.\n' +
+  'CRITICAL — LINE BREAKS: Preserve every newline (\\n) EXACTLY. Numbered items (1. 2. 3.) each on their own line. NEVER merge lines.\n' +
   '- KEEP UNCHANGED: numbers, URLs, emojis, hashtags, brand names.\n' +
   NAME_RULE;
 
@@ -284,7 +294,7 @@ async function callCerebras(model, systemPrompt, text) {
     },
     { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.CEREBRAS_API_KEY } }
   ), CALL_TIMEOUT_MS);
-  return res.data.choices[0].message.content.trim();
+  retu2n res.data.choices[0].message.content.trim();
 }
 
 async function callOpenRouter(model, systemPrompt, text) {
