@@ -96,7 +96,7 @@ function withTimeout(promise, ms, label) {
 
 // -- Debouncer: batch rapid-fire messages (1.5s window) --
 const msgBuf = new Map();
-const DEBOUNCE_MS = 1500;
+const DEBOUNCE_MS = 500;
 function scheduleTranslation(sourceId, text, replyToken) {
   if (!msgBuf.has(sourceId)) msgBuf.set(sourceId, {texts:[], token:null, timer:null});
   const buf = msgBuf.get(sourceId);
@@ -112,7 +112,15 @@ function scheduleTranslation(sourceId, text, replyToken) {
       const replies = [];
       if (tr && tr.kr) replies.push(...toLineMessages('KR: ', tr.kr));
       if (tr && tr.th) replies.push(...toLineMessages('TH: ', tr.th));
-      if (replies.length) await replyMessages(token, replies.slice(0,5)).catch(()=>{});
+      if (replies.length) {
+      replyMessages(token, replies.slice(0,5)).catch(async () => {
+        // reply token expired — push as fallback (no expiry)
+        await axios.post('https://api.line.me/v2/bot/message/push',
+          { to: sourceId, messages: replies.slice(0,5) },
+          { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` } }
+        ).catch(()=>{});
+      });
+    }
     } catch(e) { console.error('[TR] silent-fail:', e.message); }
   }, DEBOUNCE_MS);
 }
@@ -205,8 +213,11 @@ app.post('/webhook', async (req,res) => {
     const isWorking = isWorkingDay(new Date());
     const timestamp = new Date(event.timestamp).toISOString();
 
+    // -- Translate FIRST — before getSenderName blocks (saves 3s in 30s token window)
+    scheduleTranslation(sourceId, text, event.replyToken);
+
     let senderName = 'ผู้ใช้';
-    try { senderName = await withTimeout(getSenderName(event), 5000, 'getSenderName'); } catch(_){}
+    try { senderName = await withTimeout(getSenderName(event), 3000, 'getSenderName'); } catch(_){}
 
     // 1. Record activity
     recordActivity(sourceId, senderName, text);
@@ -281,9 +292,6 @@ app.post('/webhook', async (req,res) => {
     // ── ④ Off-hours buffer ─────────────────────────────────────────────────
     if (!inBizHours || !isWorking)
       addOffHoursMessage(sourceId, {timestamp,senderName,text});
-
-    // -- Translate (debounced) --
-    scheduleTranslation(sourceId, text, event.replyToken);
 
     // ── ⑥ Business-hours buffer for hourly pipeline ────────────────────────
     const groupName = await getGroupName(event.source?.groupId ?? null);
