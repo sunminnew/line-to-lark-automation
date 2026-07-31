@@ -319,8 +319,7 @@ function verifySignature(rawBody, signature) {
 }
 
 // FIX: re-throw after logging → push fallback in scheduleTranslation (server.js) will fire
-async function replyMessages(replyToken, messages) {
-  try {
+async function replyMessages(replyToken, messages) {  console.log('async function replyMessages(replyToken, messages) {  console.log('async function replyMessages(replyToken, messages) {  console.log('[LINE] tok:', replyToken ? replyToken.slice(0,15) : 'NULL', 'len:', replyToken?.length, !replyToken||/^0+$/.test(replyToken)?'DUMMY':'ok');  try {', replyToken ? replyToken.slice(0,15) : 'NULL', 'len:', replyToken?.length, !replyToken||/^0+$/.test(replyToken)?'DUMMY':'ok');  try {', replyToken ? replyToken.slice(0,15) : 'NULL', 'len:', replyToken?.length, !replyToken||/^0+$/.test(replyToken)?'DUMMY':'ok');  try {
     await axios.post(
       LINE_API_BASE + '/message/reply',
       { replyToken, messages },
