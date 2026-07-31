@@ -112,4 +112,28 @@ async function getSenderName(event) {
   }
 }
 
-module.exports = { verifySignature, translate, translateToKorean: translate, replyMessages, replyOOO, getSenderName, checkBotInfo, OOO_MESSAGE };
+
+// translateAll: returns { kr, th } — used by server.js scheduleTranslation
+async function translateAll(text) {
+  if (THAI_REGEX.test(text)) {
+    console.log('[TR] T01 Groq th_to_kr');
+    const kr = await groqTranslate(
+      text,
+      'You are a professional Thai-to-Korean translator. Translate the following Thai text into natural Korean. Output ONLY the Korean translation — no explanation, no romanization, no Thai text.'
+    );
+    if (kr) console.log('[TR] T01 ok dir=th_to_kr');
+    return kr ? { kr, th: null } : null;
+  }
+  if (KOREAN_REGEX.test(text)) {
+    console.log('[TR] T01 Groq kr_to_th');
+    const th = await groqTranslate(
+      text,
+      'You are a professional Korean-to-Thai translator. Translate the following Korean text into natural Thai. Output ONLY the Thai translation — no explanation, no romanization, no Korean text.'
+    );
+    if (th) console.log('[TR] T01 ok dir=kr_to_th');
+    return th ? { kr: null, th } : null;
+  }
+  return null; // not Thai or Korean — skip silently
+}
+
+module.exports = { verifySignature, translate, translateToKorean: translate, translateAll, replyMessages, replyOOO, getSenderName, checkBotInfo, OOO_MESSAGE };
