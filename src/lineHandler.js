@@ -319,14 +319,20 @@ function verifySignature(rawBody, signature) {
 }
 
 // FIX: re-throw after logging → push fallback in scheduleTranslation (server.js) will fire
-async function replyMessages(replyToken, messages) {  console.log('async function replyMessages(replyToken, messages) {  console.log('async function replyMessages(replyToken, messages) {  console.log('[LINE] tok:', replyToken ? replyToken.slice(0,15) : 'NULL', 'len:', replyToken?.length, !replyToken||/^0+$/.test(replyToken)?'DUMMY':'ok');  try {', replyToken ? replyToken.slice(0,15) : 'NULL', 'len:', replyToken?.length, !replyToken||/^0+$/.test(replyToken)?'DUMMY':'ok');  try {', replyToken ? replyToken.slice(0,15) : 'NULL', 'len:', replyToken?.length, !replyToken||/^0+$/.test(replyToken)?'DUMMY':'ok');  try {
+// DEBUG 2026-07-31: log replyToken prefix + HTTP status to diagnose failures
+async function replyMessages(replyToken, messages) {
+  const isDummy = !replyToken || /^0+$/.test(replyToken);
+  console.log('[LINE] tok:', replyToken ? replyToken.slice(0,15) : 'NULL', 'len:', replyToken?.length, isDummy ? 'DUMMY' : 'ok');
+  if (isDummy) { throw new Error('dummy reply token'); }
+  try {
     await axios.post(
       LINE_API_BASE + '/message/reply',
       { replyToken, messages },
       { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ACCESS_TOKEN } }
     );
+    console.log('[LINE] Reply ok');
   } catch (err) {
-    console.error('[LINE] Reply failed:', err.response?.data ?? err.message);
+    console.error('[LINE] Reply failed (HTTP', err.response?.status, '):', err.response?.data ?? err.message);
     throw err; // re-throw so .catch() in scheduleTranslation fires push fallback
   }
 }
