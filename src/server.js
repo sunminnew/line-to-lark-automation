@@ -221,9 +221,6 @@ app.post('/webhook', async (req, res) => {
     const isWorking = isWorkingDay(new Date());
     const timestamp = new Date(event.timestamp).toISOString();
 
-    // Schedule translation FIRST (before getSenderName blocks)
-    scheduleTranslation(sourceId, text, event.replyToken);
-
     let senderName = 'ผู้ใช้';
     try { senderName = await withTimeout(getSenderName(event), 3000, 'getSenderName'); } catch (_) {}
 
@@ -283,6 +280,9 @@ app.post('/webhook', async (req, res) => {
       } catch (err) { console.error('[webhook] summary error:', err.message); }
       continue;
     }
+
+    // Schedule translation only for regular messages (token not consumed by AI Urgent / summary)
+    scheduleTranslation(sourceId, text, event.replyToken);
 
     // ④ Off-hours buffer
     if (!inBizHours || !isWorking) addOffHoursMessage(sourceId, { timestamp, senderName, text });
