@@ -156,6 +156,17 @@ app.post('/setup-webhook', async (_req, res) => {
   } catch (err) { res.status(500).json({ error: err.response?.data ?? err.message }); }
 });
 
+// LINE channel token health check
+app.get('/check-line', async (_req, res) => {
+  try {
+    const { checkBotInfo } = require('./lineHandler');
+    const result = await checkBotInfo();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/trigger', async (_req, res) => { await runPipeline(); res.json({ status: 'pipeline executed' }); });
 
 app.get('/e2e-test', async (_req, res) => {
