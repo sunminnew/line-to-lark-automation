@@ -225,7 +225,7 @@ async function callOpenRouter(model, systemPrompt, text) {
 }
 
 const CASCADE = [
-  { id: 'T01', fn: (p, t, d) => callLingva(t, d) },
+  { id: 'T01', fn: (p, t) => callGroq('llama-3.3-70b-versatile', p, t) },
   { id: 'T02', fn: (p, t, d) => callMyMemory(t, d) },
   { id: 'T03', fn: (p, t) => callGemini('gemini-2.5-pro',              p, t) },
   { id: 'T04', fn: (p, t) => callGroq('moonshotai/kimi-k2-instruct',   p, t) },
