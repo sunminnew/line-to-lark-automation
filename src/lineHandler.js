@@ -47,32 +47,42 @@ async function groqTranslate(text, systemPrompt) {
   }
 }
 
+// Strip non-target characters to remove garbage from LLM output
+function cleanKorean(t) {
+  return t.replace(/[^가-힯ᄀ-ᇿ㄰-㆏sd.,!?~-:;'"()/]/g, '').trim();
+}
+function cleanThai(t) {
+  return t.replace(/[^฀-๿sd.,!?~-:;'"()/]/g, '').trim();
+}
+
 async function translate(text) {
   if (THAI_REGEX.test(text)) {
     console.log('[Translate] Thai detected → translating to Korean');
-    return groqTranslate(
+    const raw = await groqTranslate(
       text,
-      'You are a professional Thai-to-Korean translator. Translate the following Thai text into natural Korean (한국어). Output ONLY the Korean translation using Hangul (한글) script — do NOT output Japanese, do NOT output romanization, do NOT output Thai, do NOT explain.'
+      'Translate this Thai text to Korean. Output ONLY Korean Hangul (한글). No Russian, no Japanese, no Chinese, no English, no romanization, no explanation whatsoever. ONLY Korean Hangul characters.'
     );
+    return raw ? (cleanKorean(raw) || raw) : null;
   }
   if (KOREAN_REGEX.test(text)) {
     console.log('[Translate] Korean detected → translating to Thai');
-    return groqTranslate(
+    const raw = await groqTranslate(
       text,
-      'You are a professional Korean-to-Thai translator. Translate the following Korean text into natural Thai (ภาษาไทย). Output ONLY the Thai translation using Thai script — do NOT output Japanese, do NOT output romanization, do NOT output Korean, do NOT explain.'
+      'Translate this Korean text to Thai. Output ONLY Thai script (ภาษาไทย). No Russian, no Japanese, no Korean, no English, no romanization, no explanation whatsoever. ONLY Thai script characters.'
     );
+    return raw ? (cleanThai(raw) || raw) : null;
   }
   if (ENGLISH_REGEX.test(text) && !THAI_REGEX.test(text) && !KOREAN_REGEX.test(text)) {
-    console.log('[Translate] English detected \u2192 translating to Thai');
-    return groqTranslate(
+    console.log('[Translate] English detected → translating to Thai');
+    const raw = await groqTranslate(
       text,
-      'You are a professional English-to-Thai translator. Translate the following English text into natural Thai. Output ONLY the Thai translation \u2014 no explanation, no romanization, no English text.'
+      'Translate this English text to Thai. Output ONLY Thai script (ภาษาไทย). No English, no romanization, no explanation. ONLY Thai script characters.'
     );
+    return raw ? (cleanThai(raw) || raw) : null;
   }
   return null;
 }
 
-// DEBUG: log token prefix + HTTP status to diagnose "Invalid reply token"
 async function replyMessages(replyToken, messages) {
   const isDummy = !replyToken || /^0+$/.test(replyToken);
   console.log('[LINE] tok:', replyToken ? replyToken.slice(0, 15) : 'NULL', 'len:', replyToken?.length ?? 0, isDummy ? 'DUMMY' : 'ok');
