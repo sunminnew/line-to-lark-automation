@@ -17,6 +17,7 @@ const OOO_MESSAGE =
 
 const THAI_REGEX   = /[\u0E00-\u0E7F]/;
 const KOREAN_REGEX = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
+const ENGLISH_REGEX = /[a-zA-Z]/;
 
 function verifySignature(rawBody, signature) {
   const hmac = crypto.createHmac('SHA256', CHANNEL_SECRET);
@@ -59,6 +60,13 @@ async function translate(text) {
     return groqTranslate(
       text,
       'You are a professional Korean-to-Thai translator. Translate the following Korean text into natural Thai. Output ONLY the Thai translation — no explanation, no romanization, no Korean text.'
+    );
+  }
+  if (ENGLISH_REGEX.test(text) && !THAI_REGEX.test(text) && !KOREAN_REGEX.test(text)) {
+    console.log('[Translate] English detected \u2192 translating to Thai');
+    return groqTranslate(
+      text,
+      'You are a professional English-to-Thai translator. Translate the following English text into natural Thai. Output ONLY the Thai translation \u2014 no explanation, no romanization, no English text.'
     );
   }
   return null;
