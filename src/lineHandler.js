@@ -47,12 +47,24 @@ async function groqTranslate(text, systemPrompt) {
   }
 }
 
-// Strip non-target characters to remove garbage from LLM output
+// Strip non-target characters to block garbage language output from LLM
 function cleanKorean(t) {
-  return t.replace(/[^가-힯ᄀ-ᇿ㄰-㆏sd.,!?~-:;'"()/]/g, '').trim();
+  return t.split('').filter(function(c) {
+    var code = c.charCodeAt(0);
+    return (code >= 0xAC00 && code <= 0xD7AF) ||
+           (code >= 0x1100 && code <= 0x11FF) ||
+           (code >= 0x3130 && code <= 0x318F) ||
+           c === ' ' || c === '\n' || c === '\t' ||
+           (code >= 0x30 && code <= 0x39);
+  }).join('').trim();
 }
 function cleanThai(t) {
-  return t.replace(/[^฀-๿sd.,!?~-:;'"()/]/g, '').trim();
+  return t.split('').filter(function(c) {
+    var code = c.charCodeAt(0);
+    return (code >= 0x0E00 && code <= 0x0E7F) ||
+           c === ' ' || c === '\n' || c === '\t' ||
+           (code >= 0x30 && code <= 0x39);
+  }).join('').trim();
 }
 
 async function translate(text) {
