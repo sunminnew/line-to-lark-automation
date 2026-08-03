@@ -52,14 +52,14 @@ async function translate(text) {
     console.log('[Translate] Thai detected → translating to Korean');
     return groqTranslate(
       text,
-      'You are a professional Thai-to-Korean translator. Translate the following Thai text into natural Korean. Output ONLY the Korean translation — no explanation, no romanization, no Thai text.'
+      'You are a professional Thai-to-Korean translator. Translate the following Thai text into natural Korean (한국어). Output ONLY the Korean translation using Hangul (한글) script — do NOT output Japanese, do NOT output romanization, do NOT output Thai, do NOT explain.'
     );
   }
   if (KOREAN_REGEX.test(text)) {
     console.log('[Translate] Korean detected → translating to Thai');
     return groqTranslate(
       text,
-      'You are a professional Korean-to-Thai translator. Translate the following Korean text into natural Thai. Output ONLY the Thai translation — no explanation, no romanization, no Korean text.'
+      'You are a professional Korean-to-Thai translator. Translate the following Korean text into natural Thai (ภาษาไทย). Output ONLY the Thai translation using Thai script — do NOT output Japanese, do NOT output romanization, do NOT output Korean, do NOT explain.'
     );
   }
   if (ENGLISH_REGEX.test(text) && !THAI_REGEX.test(text) && !KOREAN_REGEX.test(text)) {
