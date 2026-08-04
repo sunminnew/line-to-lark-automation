@@ -47,58 +47,62 @@ async function groqTranslate(text, systemPrompt) {
   }
 }
 
-// Strip non-target characters — allow English letters for proper nouns/transliteration
+// Strip non-target characters — use charCode only to avoid string escaping bugs
 function cleanKorean(t) {
-  return t.split('').filter(function(c) {
-    var code = c.charCodeAt(0);
-    return (code >= 0xAC00 && code <= 0xD7AF) ||
-           (code >= 0x1100 && code <= 0x11FF) ||
-           (code >= 0x3130 && code <= 0x318F) ||
-           (code >= 0x41 && code <= 0x5A) ||
-           (code >= 0x61 && code <= 0x7A) ||
-           c === ' ' || c === '\n' || c === '\t' ||
-           (code >= 0x30 && code <= 0x39) ||
-           '.,:!?~-\'"\'()'.indexOf(c) >= 0;
-  }).join('').trim();
+  return t.split("").filter(function(c) {
+    var n = c.charCodeAt(0);
+    return (n >= 0xAC00 && n <= 0xD7AF) ||
+           (n >= 0x1100 && n <= 0x11FF) ||
+           (n >= 0x3130 && n <= 0x318F) ||
+           (n >= 0x41   && n <= 0x5A)   ||
+           (n >= 0x61   && n <= 0x7A)   ||
+           n === 32 || n === 10 || n === 9 ||
+           (n >= 0x30 && n <= 0x39);
+  }).join("").trim();
 }
 function cleanThai(t) {
-  return t.split('').filter(function(c) {
-    var code = c.charCodeAt(0);
-    return (code >= 0x0E00 && code <= 0x0E7F) ||
-           (code >= 0x41 && code <= 0x5A) ||
-           (code >= 0x61 && code <= 0x7A) ||
-           c === ' ' || c === '\n' || c === '\t' ||
-           (code >= 0x30 && code <= 0x39) ||
-           '.,:!?~-\'"\'()'.indexOf(c) >= 0;
-  }).join('').trim();
+  return t.split("").filter(function(c) {
+    var n = c.charCodeAt(0);
+    return (n >= 0x0E00 && n <= 0x0E7F) ||
+           (n >= 0x41   && n <= 0x5A)   ||
+           (n >= 0x61   && n <= 0x7A)   ||
+           n === 32 || n === 10 || n === 9 ||
+           (n >= 0x30 && n <= 0x39);
+  }).join("").trim();
 }
 
-const TRANSLATE_ONLY_RULE = 'IMPORTANT: You are a TRANSLATION TOOL only. Do NOT answer questions. Do NOT add information. Do NOT interpret or explain. ONLY translate the exact words written — nothing more, nothing less.';
+var TRANSLATE_ONLY_RULE = "IMPORTANT: You are a TRANSLATION TOOL only. Do NOT answer questions. Do NOT add information. Do NOT interpret. ONLY translate the exact words written, nothing more.";
 
 async function translate(text) {
   if (THAI_REGEX.test(text)) {
-    console.log('[Translate] Thai detected → translating to Korean');
-    const raw = await groqTranslate(
+    console.log("[Translate] Thai detected → translating to Korean");
+    var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + '\n\nTranslate this Thai text to Korean (한국어). Output ONLY Korean Hangul (한글). For proper nouns or brand names with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation.'
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\ud55c\uad6d\uc5b4). Output ONLY Korean Hangul (\ud55c\uae00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation."
     );
-    return raw ? (cleanKorean(raw) || raw) : null;
+    if (!raw) return null;
+    var cleaned = cleanKorean(raw);
+    return cleaned.length > 0 ? cleaned : null;
   }
   if (KOREAN_REGEX.test(text)) {
-    console.log('[Translate] Korean detected → translating to Thai');
-    const raw = await groqTranslate(
+    console.log("[Translate] Korean detected → translating to Thai");
+    var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + '\n\nTranslate this Korean text to Thai (ภาษาไทย). Output ONLY Thai script. For proper nouns or brand names with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation.'
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22). Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation."
     );
-    return raw ? (cleanThai(raw) || raw) : null;
+    if (!raw) return null;
+    var cleaned = cleanThai(raw);
+    return cleaned.length > 0 ? cleaned : null;
   }
   if (ENGLISH_REGEX.test(text) && !THAI_REGEX.test(text) && !KOREAN_REGEX.test(text)) {
-    console.log('[Translate] English detected → translating to Thai');
-    const raw = await groqTranslate(
+    console.log("[Translate] English detected → translating to Thai");
+    var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + '\n\nTranslate this English text to Thai (ภาษาไทย). Output ONLY Thai script. No English, no romanization, no explanation.'
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this English text to Thai (\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22). Output ONLY Thai script. No English, no romanization, no explanation."
     );
-    return raw ? (cleanThai(raw) || raw) : null;
+    if (!raw) return null;
+    var cleaned = cleanThai(raw);
+    return cleaned.length > 0 ? cleaned : null;
   }
   return null;
 }
