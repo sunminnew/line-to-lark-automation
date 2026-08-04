@@ -47,32 +47,40 @@ async function groqTranslate(text, systemPrompt) {
   }
 }
 
-// Strip non-target characters to block garbage language output from LLM
+// Strip non-target characters — allow English letters for proper nouns/transliteration
 function cleanKorean(t) {
   return t.split('').filter(function(c) {
     var code = c.charCodeAt(0);
     return (code >= 0xAC00 && code <= 0xD7AF) ||
            (code >= 0x1100 && code <= 0x11FF) ||
            (code >= 0x3130 && code <= 0x318F) ||
+           (code >= 0x41 && code <= 0x5A) ||
+           (code >= 0x61 && code <= 0x7A) ||
            c === ' ' || c === '\n' || c === '\t' ||
-           (code >= 0x30 && code <= 0x39);
+           (code >= 0x30 && code <= 0x39) ||
+           '.,:!?~-\'"\'()'.indexOf(c) >= 0;
   }).join('').trim();
 }
 function cleanThai(t) {
   return t.split('').filter(function(c) {
     var code = c.charCodeAt(0);
     return (code >= 0x0E00 && code <= 0x0E7F) ||
+           (code >= 0x41 && code <= 0x5A) ||
+           (code >= 0x61 && code <= 0x7A) ||
            c === ' ' || c === '\n' || c === '\t' ||
-           (code >= 0x30 && code <= 0x39);
+           (code >= 0x30 && code <= 0x39) ||
+           '.,:!?~-\'"\'()'.indexOf(c) >= 0;
   }).join('').trim();
 }
+
+const TRANSLATE_ONLY_RULE = 'IMPORTANT: You are a TRANSLATION TOOL only. Do NOT answer questions. Do NOT add information. Do NOT interpret or explain. ONLY translate the exact words written — nothing more, nothing less.';
 
 async function translate(text) {
   if (THAI_REGEX.test(text)) {
     console.log('[Translate] Thai detected → translating to Korean');
     const raw = await groqTranslate(
       text,
-      'Translate this Thai text to Korean. Output ONLY Korean Hangul (한글). No Russian, no Japanese, no Chinese, no English, no romanization, no explanation whatsoever. ONLY Korean Hangul characters.'
+      TRANSLATE_ONLY_RULE + '\n\nTranslate this Thai text to Korean (한국어). Output ONLY Korean Hangul (한글). For proper nouns or brand names with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation.'
     );
     return raw ? (cleanKorean(raw) || raw) : null;
   }
@@ -80,7 +88,7 @@ async function translate(text) {
     console.log('[Translate] Korean detected → translating to Thai');
     const raw = await groqTranslate(
       text,
-      'Translate this Korean text to Thai. Output ONLY Thai script (ภาษาไทย). No Russian, no Japanese, no Korean, no English, no romanization, no explanation whatsoever. ONLY Thai script characters.'
+      TRANSLATE_ONLY_RULE + '\n\nTranslate this Korean text to Thai (ภาษาไทย). Output ONLY Thai script. For proper nouns or brand names with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation.'
     );
     return raw ? (cleanThai(raw) || raw) : null;
   }
@@ -88,7 +96,7 @@ async function translate(text) {
     console.log('[Translate] English detected → translating to Thai');
     const raw = await groqTranslate(
       text,
-      'Translate this English text to Thai. Output ONLY Thai script (ภาษาไทย). No English, no romanization, no explanation. ONLY Thai script characters.'
+      TRANSLATE_ONLY_RULE + '\n\nTranslate this English text to Thai (ภาษาไทย). Output ONLY Thai script. No English, no romanization, no explanation.'
     );
     return raw ? (cleanThai(raw) || raw) : null;
   }
