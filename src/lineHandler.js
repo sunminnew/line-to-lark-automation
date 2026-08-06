@@ -25,26 +25,38 @@ function verifySignature(rawBody, signature) {
   return hmac.digest('base64') === signature;
 }
 
+var GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it'];
+
 async function groqTranslate(text, systemPrompt) {
-  try {
-    const res = await axios.post(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text },
-        ],
-        temperature: 0.1,
-        max_tokens: 500,
-      },
-      { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY } }
-    );
-    return res.data.choices[0].message.content.trim();
-  } catch (err) {
-    console.error('[Translate] Groq error:', err.response?.data ?? err.message);
-    return null;
+  for (var i = 0; i < GROQ_MODELS.length; i++) {
+    var model = GROQ_MODELS[i];
+    try {
+      var res = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          model: model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text },
+          ],
+          temperature: 0.1,
+          max_tokens: 500,
+        },
+        { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY } }
+      );
+      if (i > 0) console.log('[Translate] used fallback model:', model);
+      return res.data.choices[0].message.content.trim();
+    } catch (err) {
+      var isRateLimit = err.response?.data?.error?.code === 'rate_limit_exceeded';
+      if (isRateLimit && i < GROQ_MODELS.length - 1) {
+        console.warn('[Translate] rate limit on ' + model + ', trying next model...');
+        continue;
+      }
+      console.error('[Translate] Groq error:', err.response?.data ?? err.message);
+      return null;
+    }
   }
+  return null;
 }
 
 // Strip non-target characters — use charCode only to avoid string escaping bugs
