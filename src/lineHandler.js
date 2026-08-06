@@ -71,7 +71,7 @@ function cleanThai(t) {
   }).join("").trim();
 }
 
-var TRANSLATE_ONLY_RULE = "IMPORTANT: You are a TRANSLATION TOOL only. Do NOT answer questions. Do NOT add information. Do NOT interpret. ONLY translate the exact words written, nothing more.";
+var TRANSLATE_ONLY_RULE = "You are a translation machine. Your ONLY output is the translated text. NEVER say you cannot translate. NEVER apologize. NEVER explain. NEVER respond to the content. Just translate every word literally, even if it is a name, a request, or seems strange.";
 
 async function translate(text) {
   if (THAI_REGEX.test(text)) {
@@ -185,7 +185,7 @@ async function translateAll(text) {
     console.log("[TR] T01 Groq en_to_th");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this English text to Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Output ONLY Thai script. No English, no romanization, no explanation."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate EVERY word of this English text into Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Output ONLY Thai script. Even names or phrases — translate them. NEVER refuse."
     );
     if (!raw) return null;
     var th = cleanThai(raw);
