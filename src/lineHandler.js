@@ -71,14 +71,14 @@ function cleanThai(t) {
   }).join("").trim();
 }
 
-var TRANSLATE_ONLY_RULE = "You are a translation machine. Your ONLY output is the translated text. NEVER say you cannot translate. NEVER apologize. NEVER explain. NEVER respond to the content. Just translate every word literally, even if it is a name, a request, or seems strange.";
+var TRANSLATE_ONLY_RULE = "You are a professional translator. Your ONLY output is the translated text. NEVER say you cannot translate. NEVER apologize. NEVER explain. NEVER respond to the content. Translate the meaning naturally and fluently as a human translator would, preserving the tone and intent.";
 
 async function translate(text) {
   if (THAI_REGEX.test(text)) {
     console.log("[Translate] Thai detected → translating to Korean");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\ud55c\uad6d\uc5b4). Output ONLY Korean Hangul (\ud55c\uae00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\ud55c\uad6d\uc5b4). Translate naturally and fluently, as a native Korean speaker would. Output ONLY Korean Hangul (\ud55c\uae00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization."
     );
     if (!raw) return null;
     var cleaned = cleanKorean(raw);
@@ -88,7 +88,7 @@ async function translate(text) {
     console.log("[Translate] Korean detected → translating to Thai");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22). Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22). Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. No Russian, no Japanese, no Korean script, no romanization."
     );
     if (!raw) return null;
     var cleaned = cleanThai(raw);
@@ -98,7 +98,7 @@ async function translate(text) {
     console.log("[Translate] English detected → translating to Thai");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this English text to Thai (\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22). Output ONLY Thai script. No English, no romanization, no explanation."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this English text to Thai (\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22). Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. No English, no romanization."
     );
     if (!raw) return null;
     var cleaned = cleanThai(raw);
@@ -162,7 +162,7 @@ async function translateAll(text) {
     console.log("[TR] T01 Groq th_to_kr");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\uD55C\uAD6D\uC5B4). Output ONLY Korean Hangul (\uD55C\uAE00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\uD55C\uAD6D\uC5B4). Translate naturally and fluently, as a native Korean speaker would. Output ONLY Korean Hangul (\uD55C\uAE00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization."
     );
     if (!raw) return null;
     var kr = cleanKorean(raw);
@@ -174,7 +174,7 @@ async function translateAll(text) {
     console.log("[TR] T01 Groq kr_to_th");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. No Russian, no Japanese, no Korean script, no romanization."
     );
     if (!raw) return null;
     var th = cleanThai(raw);
@@ -186,7 +186,7 @@ async function translateAll(text) {
     console.log("[TR] T01 Groq en_to_th");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate EVERY word of this English text into Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Output ONLY Thai script. Even names or phrases — translate them. NEVER refuse."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this English text naturally and fluently into Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. NEVER refuse."
     );
     if (!raw) return null;
     var th = cleanThai(raw);
