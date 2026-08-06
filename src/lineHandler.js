@@ -157,6 +157,7 @@ async function getSenderName(event) {
 
 // translateAll: returns { kr, th } — used by server.js scheduleTranslation
 async function translateAll(text) {
+  if (/https?:\/\//.test(text)) { console.log("[TR] skip URL"); return null; }
   if (THAI_REGEX.test(text)) {
     console.log("[TR] T01 Groq th_to_kr");
     var raw = await groqTranslate(
