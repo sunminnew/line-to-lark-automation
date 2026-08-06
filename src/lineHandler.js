@@ -158,24 +158,42 @@ async function getSenderName(event) {
 // translateAll: returns { kr, th } — used by server.js scheduleTranslation
 async function translateAll(text) {
   if (THAI_REGEX.test(text)) {
-    console.log('[TR] T01 Groq th_to_kr');
-    const kr = await groqTranslate(
+    console.log("[TR] T01 Groq th_to_kr");
+    var raw = await groqTranslate(
       text,
-      'You are a professional Thai-to-Korean translator. Translate the following Thai text into natural Korean. Output ONLY the Korean translation — no explanation, no romanization, no Thai text.'
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\uD55C\uAD6D\uC5B4). Output ONLY Korean Hangul (\uD55C\uAE00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation."
     );
-    if (kr) console.log('[TR] T01 ok dir=th_to_kr');
-    return kr ? { kr, th: null } : null;
+    if (!raw) return null;
+    var kr = cleanKorean(raw);
+    if (!kr) return null;
+    console.log("[TR] T01 ok dir=th_to_kr");
+    return { kr, th: null };
   }
   if (KOREAN_REGEX.test(text)) {
-    console.log('[TR] T01 Groq kr_to_th');
-    const th = await groqTranslate(
+    console.log("[TR] T01 Groq kr_to_th");
+    var raw = await groqTranslate(
       text,
-      'You are a professional Korean-to-Thai translator. Translate the following Korean text into natural Thai. Output ONLY the Thai translation — no explanation, no romanization, no Korean text.'
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation."
     );
-    if (th) console.log('[TR] T01 ok dir=kr_to_th');
-    return th ? { kr: null, th } : null;
+    if (!raw) return null;
+    var th = cleanThai(raw);
+    if (!th) return null;
+    console.log("[TR] T01 ok dir=kr_to_th");
+    return { kr: null, th };
   }
-  return null; // not Thai or Korean — skip silently
+  if (ENGLISH_REGEX.test(text) && !THAI_REGEX.test(text) && !KOREAN_REGEX.test(text)) {
+    console.log("[TR] T01 Groq en_to_th");
+    var raw = await groqTranslate(
+      text,
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this English text to Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Output ONLY Thai script. No English, no romanization, no explanation."
+    );
+    if (!raw) return null;
+    var th = cleanThai(raw);
+    if (!th) return null;
+    console.log("[TR] T01 ok dir=en_to_th");
+    return { kr: null, th };
+  }
+  return null;
 }
 
 module.exports = { verifySignature, translate, translateToKorean: translate, translateAll, replyMessages, replyOOO, getSenderName, checkBotInfo, OOO_MESSAGE };
