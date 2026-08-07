@@ -40,7 +40,7 @@ async function groqTranslate(text, systemPrompt) {
             { role: 'user', content: text },
           ],
           temperature: 0.1,
-          max_tokens: 500,
+          max_tokens: 1500,
         },
         { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY } }
       );
@@ -83,7 +83,7 @@ function cleanThai(t) {
   }).join("").trim();
 }
 
-var TRANSLATE_ONLY_RULE = "You are a professional translator. Your ONLY output is the translated text. NEVER say you cannot translate. NEVER apologize. NEVER explain. NEVER respond to the content. Translate the meaning naturally and fluently as a human translator would, preserving the tone and intent.";
+var TRANSLATE_ONLY_RULE = "You are a professional translator. Your ONLY output is the translated text. NEVER say you cannot translate. NEVER apologize. NEVER explain. NEVER respond to the content. Translate the meaning naturally and fluently as a human translator would, preserving the tone and intent. IMPORTANT: Keep all monetary amounts, currency units (บาท, Baht, THB, USD, etc.), numbers, and proper nouns exactly as-is — do NOT convert currencies or change numbers.";
 
 async function translate(text) {
   if (THAI_REGEX.test(text)) {
