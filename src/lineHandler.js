@@ -27,6 +27,19 @@ function verifySignature(rawBody, signature) {
 
 var GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it'];
 
+function isRepetitive(text) {
+  if (text.length < 100) return false;
+  var tokens = text.trim().split(/\s+/);
+  if (tokens.length < 15) return false;
+  var seen = {};
+  for (var i = 0; i < tokens.length - 2; i++) {
+    var key = tokens[i] + ' ' + tokens[i+1] + ' ' + tokens[i+2];
+    seen[key] = (seen[key] || 0) + 1;
+    if (seen[key] >= 5) return true;
+  }
+  return false;
+}
+
 async function groqTranslate(text, systemPrompt) {
   for (var i = 0; i < GROQ_MODELS.length; i++) {
     var model = GROQ_MODELS[i];
@@ -45,7 +58,12 @@ async function groqTranslate(text, systemPrompt) {
         { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY } }
       );
       if (i > 0) console.log('[Translate] used fallback model:', model);
-      return res.data.choices[0].message.content.trim();
+      var result = res.data.choices[0].message.content.trim();
+      if (isRepetitive(result)) {
+        console.warn('[Translate] repetition loop on ' + model + ', trying next...');
+        continue;
+      }
+      return result;
     } catch (err) {
       var isRateLimit = err.response?.data?.error?.code === 'rate_limit_exceeded';
       if (isRateLimit && i < GROQ_MODELS.length - 1) {
