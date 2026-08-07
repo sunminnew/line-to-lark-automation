@@ -90,7 +90,7 @@ async function translate(text) {
     console.log("[Translate] Thai detected → translating to Korean");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\ud55c\uad6d\uc5b4). Translate naturally and fluently, as a native Korean speaker would. Output ONLY Korean Hangul (\ud55c\uae00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\ud55c\uad6d\uc5b4). GLOSSARY: ทนาย/ทนายความ=변호사(NOT 판사), ผู้พิพากษา=판사, ศาล=법원, วีซ่า=비자, บริษัท=회사, ลูกค้า=고객, ค่าธรรมเนียม=수수료, ยกเลิก=취소. Translate naturally and fluently, as a native Korean speaker would. Output ONLY Korean Hangul (\ud55c\uae00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization."
     );
     if (!raw) return null;
     var cleaned = cleanKorean(raw);
@@ -100,7 +100,7 @@ async function translate(text) {
     console.log("[Translate] Korean detected → translating to Thai");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22). Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. No Russian, no Japanese, no Korean script, no romanization."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22). GLOSSARY: 변호사=ทนายความ(NOT ผู้พิพากษา), 판사=ผู้พิพากษา, 법원=ศาล, 비자=วีซ่า, 회사=บริษัท, 고객=ลูกค้า, 수수료=ค่าธรรมเนียม, 취소=ยกเลิก. Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. No Russian, no Japanese, no Korean script, no romanization."
     );
     if (!raw) return null;
     var cleaned = cleanThai(raw);
@@ -174,7 +174,7 @@ async function translateAll(text) {
     console.log("[TR] T01 Groq th_to_kr");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\uD55C\uAD6D\uC5B4). Translate naturally and fluently, as a native Korean speaker would. Output ONLY Korean Hangul (\uD55C\uAE00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Thai text to Korean (\uD55C\uAD6D\uC5B4). GLOSSARY: ทนาย/ทนายความ=변호사(NOT 판사), ผู้พิพากษา=판사, ศาล=법원, วีซ่า=비자, บริษัท=회사, ลูกค้า=고객, ค่าธรรมเนียม=수수료, ยกเลิก=취소. Translate naturally and fluently, as a native Korean speaker would. Output ONLY Korean Hangul (\uD55C\uAE00). For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization."
     );
     if (!raw) return null;
     var kr = cleanKorean(raw);
@@ -186,7 +186,7 @@ async function translateAll(text) {
     console.log("[TR] T01 Groq kr_to_th");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. No Russian, no Japanese, no Korean script, no romanization."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this Korean text to Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). GLOSSARY: 변호사=ทนายความ(NOT ผู้พิพากษา), 판사=ผู้พิพากษา, 법원=ศาล, 비자=วีซ่า, 회사=บริษัท, 고객=ลูกค้า, 수수료=ค่าธรรมเนียม, 취소=ยกเลิก. Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. No Russian, no Japanese, no Korean script, no romanization."
     );
     if (!raw) return null;
     var th = cleanThai(raw);
@@ -198,7 +198,7 @@ async function translateAll(text) {
     console.log("[TR] T01 Groq en_to_th");
     var raw = await groqTranslate(
       text,
-      TRANSLATE_ONLY_RULE + "\n\nTranslate this English text naturally and fluently into Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. NEVER refuse."
+      TRANSLATE_ONLY_RULE + "\n\nTranslate this English text naturally and fluently into Thai (\u0E20\u0E32\u0E29\u0E32\u0E44\u0E17\u0E22). GLOSSARY: 변호사=ทนายความ(NOT ผู้พิพากษา), 판사=ผู้พิพากษา, 법원=ศาล, 비자=วีซ่า, 회사=บริษัท, 고객=ลูกค้า, 수수료=ค่าธรรมเนียม, 취소=ยกเลิก. Translate naturally and fluently, as a native Thai speaker would. Output ONLY Thai script. For untranslatable proper nouns, use English letters. NEVER refuse."
     );
     if (!raw) return null;
     var th = cleanThai(raw);
