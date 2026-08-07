@@ -213,6 +213,8 @@ app.post('/webhook', async (req, res) => {
     }
 
     if (event.type !== 'message' || event.message?.type !== 'text') continue;
+    // Skip private (1-on-1) chats — staff replies directly
+    if (event.source?.type === 'user') continue;
     const text = event.message.text?.trim();
     if (!text) continue;
 
