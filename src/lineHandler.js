@@ -94,7 +94,7 @@ async function translate(text) {
     );
     if (!raw) return null;
     var cleaned = cleanKorean(raw);
-    return cleaned.length > 0 ? cleaned : null;
+    return (cleaned.length > 0 && /[\uAC00-\uD7AF]/.test(cleaned)) ? cleaned : null;
   }
   if (KOREAN_REGEX.test(text)) {
     console.log("[Translate] Korean detected → translating to Thai");
@@ -104,7 +104,7 @@ async function translate(text) {
     );
     if (!raw) return null;
     var cleaned = cleanThai(raw);
-    return cleaned.length > 0 ? cleaned : null;
+    return (cleaned.length > 0 && /[\u0E00-\u0E7F]/.test(cleaned)) ? cleaned : null;
   }
   if (ENGLISH_REGEX.test(text) && !THAI_REGEX.test(text) && !KOREAN_REGEX.test(text)) {
     console.log("[Translate] English detected → translating to Thai");
@@ -114,7 +114,7 @@ async function translate(text) {
     );
     if (!raw) return null;
     var cleaned = cleanThai(raw);
-    return cleaned.length > 0 ? cleaned : null;
+    return (cleaned.length > 0 && /[\u0E00-\u0E7F]/.test(cleaned)) ? cleaned : null;
   }
   return null;
 }
@@ -181,7 +181,7 @@ async function translateAll(text) {
     );
     if (!raw) return null;
     var kr = cleanKorean(raw);
-    if (!kr) return null;
+    if (!kr || !/[\uAC00-\uD7AF]/.test(kr)) return null;
     console.log("[TR] T01 ok dir=th_to_kr");
     return { kr, th: null };
   }
@@ -193,7 +193,7 @@ async function translateAll(text) {
     );
     if (!raw) return null;
     var th = cleanThai(raw);
-    if (!th) return null;
+    if (!th || !/[\u0E00-\u0E7F]/.test(th)) return null;
     console.log("[TR] T01 ok dir=kr_to_th");
     return { kr: null, th };
   }
@@ -205,7 +205,7 @@ async function translateAll(text) {
     );
     if (!raw) return null;
     var th = cleanThai(raw);
-    if (!th) return null;
+    if (!th || !/[\u0E00-\u0E7F]/.test(th)) return null;
     console.log("[TR] T01 ok dir=en_to_th");
     return { kr: null, th };
   }
