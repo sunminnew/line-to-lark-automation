@@ -249,6 +249,45 @@ async function sendWeeklyGreeting(type) {
   }
 }
 
+
+// ─── Holiday reminder (17:00 daily) ──────────────────────────────────────────
+async function sendHolidayReminder() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const { th: nameTh, kr: nameKr, key } = getHolidayName(tomorrow);
+  if (!nameTh) return; // tomorrow is not a Thai holiday
+
+  const tomorrowStr = tomorrow.toLocaleDateString('th-TH', {
+    timeZone: 'Asia/Bangkok', dateStyle: 'full'
+  });
+
+  const msg = [
+    '\uD83C\uDF10 \u0e41\u0e08\u0e49\u0e07\u0e27\u0e31\u0e19\u0e2b\u0e22\u0e38\u0e14\u0e19\u0e31\u0e01\u0e02\u0e31\u0e15\u0e24\u0e01\u0e29\u0e4c\u0e44\u0e17\u0e22',
+    '',
+    '\u23F0 \u0e1e\u0e23\u0e38\u0e48\u0e07\u0e19\u0e35\u0e49 (' + tomorrowStr + ')',
+    '\u0e40\u0e1b\u0e47\u0e19 \u201c' + nameTh + '\u201d',
+    '\u0e2a\u0e33\u0e19\u0e31\u0e01\u0e07\u0e32\u0e19\u0e2b\u0e22\u0e38\u0e14\u0e17\u0e33\u0e01\u0e32\u0e23 \u0e01\u0e23\u0e38\u0e13\u0e32\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d\u0e2d\u0e35\u0e01\u0e04\u0e23\u0e31\u0e49\u0e07\u0e43\u0e19\u0e27\u0e31\u0e19\u0e17\u0e33\u0e01\u0e32\u0e23\u0e16\u0e31\u0e14\u0e44\u0e1b\u0e19\u0e30\u0e04\u0e23\u0e31\u0e1a',
+    '',
+    '\uD83C\uDDF9\uD83C\uDDED Thailand Public Holiday Tomorrow:',
+    '"' + nameTh + '"',
+    'Our office will be closed. We will resume on the next working day.',
+    '',
+    '\uD83C\uDDF0\uD83C\uDDF7 \uB0B4\uC77C\uC740 \uD0DC\uAD6D \uACF5\uD734\uC77C\uC785\uB2C8\uB2E4',
+    '"' + (nameKr ? nameKr.split(' | ')[0] : nameTh) + '"',
+    '\uC0AC\uBB34\uC2E4\uC740 \uD734\uBB34\uD569\uB2C8\uB2E4. \uB2E4\uC74C \uC601\uC5C5\uC77C\uC5D0 \uC5F0\uB77D \uBD80\uD0C1\uB4DC\uB9BD\uB2C8\uB2E4. \uD3B8\uC758\uB97C \uB4DC\uB824 \uC8C4\uC1A1\uD569\uB2C8\uB2E4 \uD83D\uDE4F',
+  ].join('\n');
+
+  const groupIds = getAllKnownGroupIds();
+  if (!groupIds.length) {
+    console.log('[CRON] holiday reminder: no groups to notify');
+    return;
+  }
+  console.log('[CRON] holiday reminder: ' + nameTh + ' (' + key + ') → ' + groupIds.length + ' groups');
+  for (const gid of groupIds) {
+    await pushToLineGroup(gid, msg);
+  }
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 function startCronJob() {
   cron.schedule('0 * * * *',      runPipeline,        { timezone: 'Asia/Bangkok' });
@@ -257,7 +296,8 @@ function startCronJob() {
   cron.schedule('45 17 * * 1-5',  sendEveningSummary, { timezone: 'Asia/Bangkok' });
   cron.schedule('0 18 * * 5', () => sendWeeklyGreeting('friday'), { timezone: 'Asia/Bangkok' });
     cron.schedule('0 9 * * 1', () => sendWeeklyGreeting('monday'), { timezone: 'Asia/Bangkok' });
-    console.log('[CRON] 6 jobs started (BKK) — dailyLog + weekly greetings active');
+  cron.schedule('0 17 * * *', sendHolidayReminder, { timezone: 'Asia/Bangkok' });
+    console.log('[CRON] 7 jobs started (BKK) — dailyLog + weekly greetings + holiday reminder active');
   setTimeout(catchUpMorningSummary, 5000);
 }
 
