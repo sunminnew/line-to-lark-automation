@@ -47,7 +47,7 @@ const aiUrgentSessions = new Map();
 const AI_URGENT_TTL = 30 * 60 * 1000;
 
 function isAIUrgentTrigger(text) {
-  return /^(ai\s*urgent|ai\s*agent|@วิสดอม|เรียกวิสดอม|ถามวิสดอม|วิสดอมช่วย|หาวิสดอม|ujin\s*help|위즈덤아|wisdom\s*help)$/i.test(text.trim());
+  return /^(\/wisdom|\/w|\/위즈덤|ai\s*urgent)$/i.test(text.trim());
 }
 function isAIUrgentActive(groupId) {
   const exp = aiUrgentSessions.get(groupId);
