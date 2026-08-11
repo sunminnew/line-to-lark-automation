@@ -307,7 +307,7 @@ function startCronJob() {
   cron.schedule('45 17 * * 1-5',  sendEveningSummary, { timezone: 'Asia/Bangkok' });
   cron.schedule('0 18 * * 5', () => sendWeeklyGreeting('friday'), { timezone: 'Asia/Bangkok' });
     cron.schedule('0 9 * * 1', () => sendWeeklyGreeting('monday'), { timezone: 'Asia/Bangkok' });
-  cron.schedule('0 17 * * *', sendHolidayReminder, { timezone: 'Asia/Bangkok' });
+  cron.schedule('50 17 * * *', sendHolidayReminder, { timezone: 'Asia/Bangkok' });
     console.log('[CRON] 7 jobs started (BKK) — dailyLog + weekly greetings + holiday reminder active');
   setTimeout(catchUpMorningSummary, 5000);
 }
