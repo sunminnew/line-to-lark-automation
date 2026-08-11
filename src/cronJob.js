@@ -259,27 +259,47 @@ async function sendHolidayReminder() {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const { th: nameTh, kr: nameKr, key } = getHolidayName(tomorrow);
-  if (!nameTh) return;
-  const tomorrowStr = tomorrow.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'full' });
+  if (!nameTh) return; // tomorrow is not a Thai holiday
+
+  const d = tomorrow;
+  const dayNum = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(8); // DD
+  const monthTH = ['', 'มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  const monthEN = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthKR = ['','일월','이월','삼월','사월','오월','유월','칠월','팔월','구월','십월','십일월','십이월'];
+  const m = d.toLocaleDateString('en-US', { timeZone: 'Asia/Bangkok', month: 'numeric' }) * 1;
+  const day = parseInt(dayNum);
+
   const krName = nameKr ? nameKr.split(' | ')[0] : nameTh;
-  const NL = String.fromCharCode(10);
+  const NL = '\n';
+
   const msg =
-    '🌐 แจ้งวันหยุดนักขัตฤกษ์ไทย' + NL + NL +
-    '⏰ พรุ่งนี้ (' + tomorrowStr + ')' + NL +
-    'เป็น "' + nameTh + '"' + NL +
-    'สำนักงานหยุดทำการ กรุณาติดต่ออีกครั้งในวันทำการถัดไปนะครับ' + NL + NL +
-    '🇹🇭 Thailand Public Holiday Tomorrow:' + NL +
-    '"' + nameTh + '"' + NL +
-    'Our office will be closed. We will resume on the next working day.' + NL + NL +
-    '🇰🇷 내일은 태국 공휴일입니다.' + NL +
-    '"' + krName + '"' + NL +
-    '사무실은 휴무합니다. 다음 영업일에 연락 부탁드립니다. 편의를 드려 죄송합니다 🙏';
+    '🌸 วันหยุดนักขัตฤกษ์ไทย — ' + nameTh + ' 🌸' + NL +
+    NL +
+    'เรียนลูกค้าทุกท่านที่เคารพครับ 🙏' + NL +
+    NL +
+    'พรุ่งนี้ (' + day + ' ' + monthTH[m] + ') ทางสำนักงานหยุดทำการเนื่องจากวัน “' + nameTh + '”' + NL +
+    'สามารถติดต่อทีมงานได้อีกครั้งในวันทำการถัดไปนะครับ' + NL +
+    'ขอบคุณทุกท่านที่ไว้วางใจในทีมงานของเราเสมอนะครับ 💙' + NL +
+    NL +
+    '———' + NL +
+    NL +
+    '🇹🇭 Thai Public Holiday — ' + nameTh + NL +
+    'Our office will be closed tomorrow (' + monthEN[m] + ' ' + day + ').' + NL +
+    'We’ll be back on the next working day.' + NL +
+    'Thank you for your continued trust in us. 💙' + NL +
+    NL +
+    '———' + NL +
+    NL +
+    '🇰🇷 태국 공휴일 안내 — ' + krName + NL +
+    '내일(' + m + '월 ' + day + '일)은 태국 공휴일입니다.' + NL +
+    '사무실은 휴무이며, 다음 영업일에 성심성의껴 연락드리겠습니다.' + NL +
+    '항상 믿어 주셔서 감사합니다 🙏';
+
   const groupIds = getAllKnownGroupIds();
   if (!groupIds.length) { console.log('[CRON] holiday reminder: no groups'); return; }
   console.log('[CRON] holiday reminder: ' + nameTh + ' -> ' + groupIds.length + ' groups');
   for (const gid of groupIds) await pushToLineGroup(gid, msg);
 }
-
 function startCronJob() {
   cron.schedule('0 * * * *',      runPipeline,        { timezone: 'Asia/Bangkok' });
   cron.schedule('*/5 * * * *',    checkStaleChats,    { timezone: 'Asia/Bangkok' });
