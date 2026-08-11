@@ -39,7 +39,7 @@ async function getGroupName(groupId) {
   } catch { return groupId; }
 }
 const { isBusinessHours }  = require('./timeRouter');
-const { isWorkingDay }     = require('./holidays');
+const { isWorkingDay , getHolidayName }     = require('./holidays');
 const { flushMessages }    = require('./messageStore');
 const {
   getStaleGroups, setAlertLevel,
@@ -289,6 +289,33 @@ async function sendHolidayReminder() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+
+// ─── Holiday reminder (17:00 daily) ─────────────────────────────────────────
+async function sendHolidayReminder() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const { th: nameTh, kr: nameKr, key } = getHolidayName(tomorrow);
+  if (!nameTh) return;
+  const tomorrowStr = tomorrow.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'full' });
+  const krName = nameKr ? nameKr.split(' | ')[0] : nameTh;
+  const NL = String.fromCharCode(10);
+  const msg =
+    '🌐 แจ้งวันหยุดนักขัตฤกษ์ไทย' + NL + NL +
+    '⏰ พรุ่งนี้ (' + tomorrowStr + ')' + NL +
+    'เป็น "' + nameTh + '"' + NL +
+    'สำนักงานหยุดทำการ กรุณาติดต่ออีกครั้งในวันทำการถัดไปนะครับ' + NL + NL +
+    '🇹🇭 Thailand Public Holiday Tomorrow:' + NL +
+    '"' + nameTh + '"' + NL +
+    'Our office will be closed. We will resume on the next working day.' + NL + NL +
+    '🇰🇷 내일은 태국 공휴일입니다.' + NL +
+    '"' + krName + '"' + NL +
+    '사무실은 휴무합니다. 다음 영업일에 연락 부탁드립니다. 편의를 드려 죄송합니다 🙏';
+  const groupIds = getAllKnownGroupIds();
+  if (!groupIds.length) { console.log('[CRON] holiday reminder: no groups'); return; }
+  console.log('[CRON] holiday reminder: ' + nameTh + ' -> ' + groupIds.length + ' groups');
+  for (const gid of groupIds) await pushToLineGroup(gid, msg);
+}
+
 function startCronJob() {
   cron.schedule('0 * * * *',      runPipeline,        { timezone: 'Asia/Bangkok' });
   cron.schedule('*/5 * * * *',    checkStaleChats,    { timezone: 'Asia/Bangkok' });
@@ -296,6 +323,7 @@ function startCronJob() {
   cron.schedule('45 17 * * 1-5',  sendEveningSummary, { timezone: 'Asia/Bangkok' });
   cron.schedule('0 18 * * 5', () => sendWeeklyGreeting('friday'), { timezone: 'Asia/Bangkok' });
     cron.schedule('0 9 * * 1', () => sendWeeklyGreeting('monday'), { timezone: 'Asia/Bangkok' });
+  cron.schedule('0 17 * * *', sendHolidayReminder, { timezone: 'Asia/Bangkok' });
   cron.schedule('0 17 * * *', sendHolidayReminder, { timezone: 'Asia/Bangkok' });
     console.log('[CRON] 7 jobs started (BKK) — dailyLog + weekly greetings + holiday reminder active');
   setTimeout(catchUpMorningSummary, 5000);
