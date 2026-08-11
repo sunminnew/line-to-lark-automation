@@ -59,7 +59,12 @@ function getAllGroupsWithOffHours() {
 }
 
 function getAllKnownGroupIds() {
-  return [...groupActivity.keys()];
+  const fromMemory = [...groupActivity.keys()];
+  // Fallback: group IDs from env var — survives Render redeploys
+  // Format in Render: KNOWN_GROUP_IDS=Cxxxx,Cxxxx,Cxxxx
+  const fromEnv = (process.env.KNOWN_GROUP_IDS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  return [...new Set([...fromMemory, ...fromEnv])];
 }
 
 module.exports = {
