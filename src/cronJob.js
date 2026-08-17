@@ -44,6 +44,7 @@ const { flushMessages }    = require('./messageStore');
 const {
   getStaleGroups, setAlertLevel,
   flushOffHoursMessages, getAllGroupsWithOffHours, getAllKnownGroupIds,
+  setPendingHolidayReminder,
 } = require('./messageTracker');
 const { sendToLarkGroup, sendStaleAlert, sendSummaryCard } = require('./larkMessenger');
 const { summarizeForLark } = require('./aiSummarizer');
@@ -295,10 +296,8 @@ async function sendHolidayReminder() {
     '사무실은 휴무이며, 다음 영업일에 성심성의껴 연락드리겠습니다.' + NL +
     '항상 믿어 주셔서 감사합니다 🙏';
 
-  const groupIds = getAllKnownGroupIds();
-  if (!groupIds.length) { console.log('[CRON] holiday reminder: no groups'); return; }
-  console.log('[CRON] holiday reminder: ' + nameTh + ' -> ' + groupIds.length + ' groups');
-  for (const gid of groupIds) await pushToLineGroup(gid, msg);
+  setPendingHolidayReminder(msg);
+  console.log('[CRON] holiday reminder set as pending: ' + nameTh + ' → piggyback on next reply');
 }
 function startCronJob() {
   cron.schedule('0 * * * *',      runPipeline,        { timezone: 'Asia/Bangkok' });
