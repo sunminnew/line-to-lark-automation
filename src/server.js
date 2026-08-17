@@ -18,7 +18,7 @@ const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive } = require('./keepAlive');
 const { summarizeForLark } = require('./aiSummarizer');
 const { sendToLarkGroup, sendSummaryCard, sendAlertCard } = require('./larkMessenger');
-const { recordActivity, addOffHoursMessage } = require('./messageTracker');
+const { recordActivity, addOffHoursMessage, consumeHolidayReminder } = require('./messageTracker');
 const { isQuestion, answerAIUrgent, analyzeForLark } = require('./smartAdvisor');
 
 const app = express();
@@ -101,6 +101,9 @@ function scheduleTranslation(sourceId, text, replyToken) {
       const replies = [];
       if (tr && tr.kr) replies.push(...toLineMessages('KR: ', tr.kr));
       if (tr && tr.th) replies.push(...toLineMessages('TH: ', tr.th));
+      // Piggyback pending holiday reminder (free — no Push API quota)
+      const holidayMsg = consumeHolidayReminder(sourceId);
+      if (holidayMsg) replies.push({ type: 'text', text: holidayMsg });
       if (replies.length) {
         // replyMessages now re-throws on error → this .catch() fires on failure
         replyMessages(token, replies.slice(0, 5)).catch(async () => {
