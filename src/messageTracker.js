@@ -67,6 +67,26 @@ function getAllKnownGroupIds() {
   return [...new Set([...fromMemory, ...fromEnv])];
 }
 
+
+// ── Pending holiday reminder — set by CRON, delivered via next webhook reply ──
+const pendingHolidayByGroup = new Map();
+
+/** Set the holiday reminder text for all known groups. Called by CRON at 17:50. */
+function setPendingHolidayReminder(text) {
+  const groups = getAllKnownGroupIds();
+  for (const gid of groups) pendingHolidayByGroup.set(gid, text);
+  console.log('[HOLIDAY] pending set for ' + groups.length + ' groups');
+}
+
+/** Consume the pending reminder for a group (returns text or null, clears flag). */
+function consumeHolidayReminder(groupId) {
+  if (!pendingHolidayByGroup.has(groupId)) return null;
+  const text = pendingHolidayByGroup.get(groupId);
+  pendingHolidayByGroup.delete(groupId);
+  console.log('[HOLIDAY] reminder delivered to ' + groupId);
+  return text;
+}
+
 module.exports = {
   recordActivity,
   getStaleGroups,
@@ -75,5 +95,7 @@ module.exports = {
   addOffHoursMessage,
   flushOffHoursMessages,
   getAllGroupsWithOffHours,
-  getAllKnownGroupIds
+  getAllKnownGroupIds,
+  setPendingHolidayReminder,
+  consumeHolidayReminder,
 };
