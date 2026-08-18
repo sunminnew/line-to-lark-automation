@@ -1,7 +1,7 @@
 /**
  * lineHandler.js
  * Bidirectional translation: Thai<->Korean via Groq API (free tier) + Gemini fallback.
- * Fallback chain: llama-3.3-70b -> llama-3.1-8b -> gemma2-9b -> Gemini 2.0 Flash
+ * Fallback chain: openai/gpt-oss-20b -> openai/gpt-oss-120b -> Gemini 3.6 Flash
  */
 const axios = require('axios');
 const crypto = require('crypto');
@@ -109,7 +109,7 @@ async function geminiTranslate(text, systemPrompt) {
   if (!GEMINI_API_KEY) return null;
   try {
     const res = await axios.post(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=' + GEMINI_API_KEY,
       {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ parts: [{ text: text }] }],
@@ -128,7 +128,7 @@ async function geminiTranslate(text, systemPrompt) {
 }
 
 // ── Groq models (3 primary + Gemini as 4th) ─────────────────────────────────
-var GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it'];
+var GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
 
 async function aiTranslate(text, systemPrompt) {
   // Try each Groq model
