@@ -14,7 +14,7 @@ const GEMINI_API_KEY     = process.env.GEMINI_API_KEY;
 const CEREBRAS_API_KEY   = process.env.CEREBRAS_API_KEY;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
-// ── Context-aware prompts ─────────────────────────────────────────────────────
+// ── Context-aware prompts ──────────────────────────────────────────────────
 function buildPrompt(mode, messages) {
   const msgText = messages.map(m=>`[${m.senderName||m.sender||'?'}]: ${m.text||''}`).join('\n');
   const MAX = 6000;
@@ -45,7 +45,7 @@ function buildPrompt(mode, messages) {
   return map[mode] || map.default;
 }
 
-// ── API callers (timeout 12s ต่อ call เพื่อให้ทัน 25s window) ────────────────
+// ── API callers (timeout 12s ต่อ call เพื่อให้ทัน 25s window) ────────────
 const groq = (sys,usr,model,tok) =>
   axios.post('https://api.groq.com/openai/v1/chat/completions',
     {model, messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.3, max_tokens:tok},
@@ -64,7 +64,7 @@ const gemini = (sys,usr,model,tok) => {
 const cerebras = (sys,usr,tok) => {
   if(!CEREBRAS_API_KEY) return Promise.reject(new Error('No CEREBRAS_API_KEY'));
   return axios.post('https://api.cerebras.ai/v1/chat/completions',
-    {model:'llama-3.3-70b', messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.3, max_tokens:tok},
+    {model:'openai/gpt-oss-20b', messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.3, max_tokens:tok},
     {headers:{Authorization:`Bearer ${CEREBRAS_API_KEY}`}, timeout:12000}
   ).then(r=>r.data.choices[0].message.content.trim());
 };
@@ -78,7 +78,7 @@ const openrouter = (sys,usr,model,tok) => {
   ).then(r=>r.data.choices[0].message.content.trim());
 };
 
-// ── 11-Tier Cascade — Groq FIRST (เสถียรที่สุด) ──────────────────────────────
+// ── 3-Tier Cascade — Groq FIRST (เสถียรที่สุด) ───────────────────────────
 async function aiComplete(userPrompt, systemPrompt, maxTokens=800) {
   const sys = systemPrompt || 'คุณคือวิสดอม ผู้ช่วย AI ของ Wisdom International';
   function detectLoop(text) {
@@ -104,17 +104,9 @@ async function aiComplete(userPrompt, systemPrompt, maxTokens=800) {
   return false;
 }
 const tiers = [
-    {n:'T01:Groq-70b',      f:()=>groq(sys,userPrompt,'llama-3.3-70b-versatile',maxTokens)},
-    {n:'T02:Gemini-2.0',    f:()=>gemini(sys,userPrompt,'gemini-2.0-flash',maxTokens)},
-    {n:'T03:Groq-70b-v2',   f:()=>groq(sys,userPrompt,'llama-3.1-70b-versatile',maxTokens)},
-    {n:'T04:Groq-DeepSeek', f:()=>groq(sys,userPrompt,'deepseek-r1-distill-llama-70b',maxTokens)},
-    {n:'T05:Groq-Qwen',     f:()=>groq(sys,userPrompt,'qwen-qwq-32b',maxTokens)},
-    {n:'T06:Groq-Kimi',     f:()=>groq(sys,userPrompt,'moonshotai/kimi-k2-instruct',maxTokens)},
-    {n:'T07:Cerebras-70b',  f:()=>cerebras(sys,userPrompt,maxTokens)},
-    {n:'T08:Gemini-1.5',    f:()=>gemini(sys,userPrompt,'gemini-1.5-flash-latest',maxTokens)},
-    {n:'T09:OR-llama-70b',  f:()=>openrouter(sys,userPrompt,'meta-llama/llama-3.3-70b-instruct:free',maxTokens)},
-    {n:'T10:OR-Gemma2',     f:()=>openrouter(sys,userPrompt,'google/gemma-2-9b-it:free',maxTokens)},
-    {n:'T11:Groq-8b',       f:()=>groq(sys,userPrompt,'llama-3.1-8b-instant',maxTokens)},
+    {n:'T01:Groq-20b',      f:()=>groq(sys,userPrompt,'openai/gpt-oss-20b',maxTokens)},
+    {n:'T02:Gemini-3.6',    f:()=>gemini(sys,userPrompt,'gemini-3.6-flash',maxTokens)},
+    {n:'T03:Groq-120b',     f:()=>groq(sys,userPrompt,'openai/gpt-oss-120b',maxTokens)},
   ];
   for (const t of tiers) {
     try {
@@ -127,7 +119,7 @@ const tiers = [
   return 'ขออภัย ระบบ AI กำลังมีภาระสูง กรุณาลองใหม่ครับ';
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────
 async function summarizeMessages(messages, mode='default') {
   if (!messages || messages.length === 0) return null;
   const p = buildPrompt(mode, messages);

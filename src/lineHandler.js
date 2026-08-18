@@ -174,7 +174,8 @@ async function aiTranslate(text, systemPrompt) {
 async function translateAll(text) {
   var cleanText = text.replace(/https?:\/\/[^\s]+/g, '').trim();
   if (!cleanText) return null;
-  text = cleanText;
+  text = cleanText;  // Skip if already bilingual (Thai+Korean both present)
+    if (THAI_REGEX.test(text) && KOREAN_REGEX.test(text)) return null;
 
   if (THAI_REGEX.test(text)) {
     console.log('[TR] th->kr');

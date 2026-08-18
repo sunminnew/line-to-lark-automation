@@ -85,7 +85,7 @@ const gemini = (sys,usr,model,tok=1500) => {
 const cerebras = (sys,usr,tok=1500) => {
   if(!CEREBRAS_API_KEY) return Promise.reject(new Error('No CEREBRAS_API_KEY'));
   return axios.post('https://api.cerebras.ai/v1/chat/completions',
-    {model:'llama-3.3-70b', messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.35, max_tokens:tok},
+    {model:'openai/gpt-oss-20b', messages:[{role:'system',content:sys},{role:'user',content:usr}], temperature:0.35, max_tokens:tok},
     {headers:{Authorization:`Bearer ${CEREBRAS_API_KEY}`}, timeout:25000}
   ).then(r=>r.data.choices[0].message.content.trim());
 };
@@ -100,22 +100,14 @@ const openrouter = (sys,usr,model,tok=1500) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// 11-TIER FREE CASCADE — Groq FIRST (เสถียรที่สุด, ไม่ขึ้นกับ quota)
+// 3-TIER FREE CASCADE — Groq FIRST (เสถียรที่สุด, ไม่ขึ้นกับ quota)
 // ═══════════════════════════════════════════════════════════════════
 async function aiComplete(userPrompt, sys, maxTok=1500) {
   const systemPrompt = sys || MASTER_SYSTEM;
   const tiers = [
-    {n:'T01:Groq-70b',      f:()=>groq(systemPrompt,userPrompt,'llama-3.3-70b-versatile',maxTok)},
-    {n:'T02:Gemini-2.0',    f:()=>gemini(systemPrompt,userPrompt,'gemini-2.0-flash',maxTok)},
-    {n:'T03:Groq-70b-v2',   f:()=>groq(systemPrompt,userPrompt,'llama-3.1-70b-versatile',maxTok)},
-    {n:'T04:Groq-DeepSeek', f:()=>groq(systemPrompt,userPrompt,'deepseek-r1-distill-llama-70b',maxTok)},
-    {n:'T05:Groq-Qwen',     f:()=>groq(systemPrompt,userPrompt,'qwen-qwq-32b',maxTok)},
-    {n:'T06:Groq-Kimi',     f:()=>groq(systemPrompt,userPrompt,'moonshotai/kimi-k2-instruct',maxTok)},
-    {n:'T07:Cerebras-70b',  f:()=>cerebras(systemPrompt,userPrompt,maxTok)},
-    {n:'T08:Gemini-1.5',    f:()=>gemini(systemPrompt,userPrompt,'gemini-1.5-flash-latest',maxTok)},
-    {n:'T09:OR-llama-70b',  f:()=>openrouter(systemPrompt,userPrompt,'meta-llama/llama-3.3-70b-instruct:free',maxTok)},
-    {n:'T10:OR-Gemma2',     f:()=>openrouter(systemPrompt,userPrompt,'google/gemma-2-9b-it:free',maxTok)},
-    {n:'T11:Groq-8b',       f:()=>groq(systemPrompt,userPrompt,'llama-3.1-8b-instant',maxTok)},
+    {n:'T01:Groq-20b',      f:()=>groq(systemPrompt,userPrompt,'openai/gpt-oss-20b',maxTok)},
+    {n:'T02:Gemini-3.6',    f:()=>gemini(systemPrompt,userPrompt,'gemini-3.6-flash',maxTok)},
+    {n:'T03:Groq-120b',     f:()=>groq(systemPrompt,userPrompt,'openai/gpt-oss-120b',maxTok)},
   ];
   for (const t of tiers) {
     try {
