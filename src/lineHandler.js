@@ -115,7 +115,7 @@ async function geminiTranslate(text, systemPrompt) {
         contents: [{ parts: [{ text: text }] }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 1500 },
       },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 25000 }
+      { headers: { 'Content-Type': 'application/json' }, timeout: 20000 }
     );
     const result = res.data.candidates[0].content.parts[0].text.trim();
     if (isRepetitive(result)) return null;
@@ -146,7 +146,7 @@ async function aiTranslate(text, systemPrompt) {
           temperature: 0.1,
           max_tokens: 1500,
         },
-        { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY }, timeout: 25000 }
+        { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY }, timeout: 12000 }
       );
       var result = res.data.choices[0].message.content.trim();
       if (isRepetitive(result)) {
