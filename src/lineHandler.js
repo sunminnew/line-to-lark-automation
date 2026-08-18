@@ -39,7 +39,7 @@ function isRepetitive(text) {
     if (maxFreq / clean.length > 0.25) return true;
   }
   // 2. Output much longer than would be sensible (> 5x typical translation ratio)
-  if (text.length > 2000) return true;
+  if (text.length > 4000) return true;
   // 3. Word-trigram repetition (original check)
   if (text.length < 100) return false;
   var tokens = text.trim().split(/\s+/);
@@ -107,6 +107,8 @@ var SYSTEM_PROMPT_TO_KOREAN =
 // ── Gemini fallback (4th layer, activates if GEMINI_API_KEY is set) ──────────
 async function geminiTranslate(text, systemPrompt) {
   if (!GEMINI_API_KEY) return null;
+    var gCtrl = new AbortController();
+      var gTimer = setTimeout(function() { gCtrl.abort(); }, 20000);
   try {
     const res = await axios.post(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=' + GEMINI_API_KEY,
@@ -115,14 +117,16 @@ async function geminiTranslate(text, systemPrompt) {
         contents: [{ parts: [{ text: text }] }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 1500 },
       },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 20000 }
+      { headers: { 'Content-Type': 'application/json' }, signal: gCtrl.signal }
     );
     const result = res.data.candidates[0].content.parts[0].text.trim();
+        clearTimeout(gTimer);
     if (isRepetitive(result)) return null;
     console.log('[Translate] used Gemini fallback');
     return result;
   } catch (err) {
     console.error('[Translate] Gemini error:', err.response ? err.response.data : err.message);
+        clearTimeout(gTimer);
     return null;
   }
 }
@@ -134,6 +138,8 @@ async function aiTranslate(text, systemPrompt) {
   // Try each Groq model
   for (var i = 0; i < GROQ_MODELS.length; i++) {
     var model = GROQ_MODELS[i];
+        var aCtrl = new AbortController();
+            var aTimer = setTimeout(function() { aCtrl.abort(); }, 12000);
     try {
       var res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
@@ -146,19 +152,24 @@ async function aiTranslate(text, systemPrompt) {
           temperature: 0.1,
           max_tokens: 1500,
         },
-        { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY }, timeout: 12000 }
+        { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY }, signal: aCtrl.signal }
       );
       var result = res.data.choices[0].message.content.trim();
+          clearTimeout(aTimer);
+
+
       if (isRepetitive(result)) {
         console.warn('[Translate] repetition on ' + model + ', trying next...');
         continue;
       }
       if (i > 0) console.log('[Translate] used fallback model:', model);
+          clearTimeout(aTimer);
       return result;
     } catch (err) {
+          clearTimeout(aTimer);
       var code = err.response && err.response.data && err.response.data.error && err.response.data.error.code;
       var isLimit = code === 'rate_limit_exceeded' || (err.response && err.response.status === 429);
-      if ((isLimit || err.code === 'ECONNABORTED') && i < GROQ_MODELS.length - 1) {
+      if ((isLimit || err.code === 'ECONNABORTED' || err.code === 'ERR_CANCELED' || aCtrl.signal.aborted) && i < GROQ_MODELS.length - 1) {
         console.warn('[Translate] ' + (isLimit ? 'rate limit' : 'timeout') + ' on ' + model + ', trying next...');
         continue;
       }
