@@ -30,17 +30,9 @@ function verifySignature(rawBody, signature) {
 // ── Repetition loop detector ────────────────────────────────────────────────
 function isRepetitive(text) {
   if (!text || text.length < 20) return false;
-  // 1. Single-character dominance (catches ๆๆๆ... hallucinations)
-  var clean = text.replace(/\s/g, '');
-  if (clean.length > 30) {
-    var freq = {};
-    for (var c of clean) freq[c] = (freq[c] || 0) + 1;
-    var maxFreq = Math.max(...Object.values(freq));
-    if (maxFreq / clean.length > 0.25) return true;
-  }
-  // 2. Output much longer than would be sensible (> 5x typical translation ratio)
+  // Output much longer than would be sensible
   if (text.length > 4000) return true;
-  // 3. Word-trigram repetition (original check)
+  // Word-trigram repetition (catches true hallucination loops)
   if (text.length < 100) return false;
   var tokens = text.trim().split(/\s+/);
   if (tokens.length < 10) return false;
@@ -108,7 +100,7 @@ var SYSTEM_PROMPT_TO_KOREAN =
 async function geminiTranslate(text, systemPrompt) {
   if (!GEMINI_API_KEY) return null;
     var gCtrl = new AbortController();
-      var gTimer = setTimeout(function() { gCtrl.abort(); }, 20000);
+      var gTimer = setTimeout(function() { gCtrl.abort(); }, 30000);
   try {
     const res = await axios.post(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=' + GEMINI_API_KEY,
