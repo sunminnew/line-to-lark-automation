@@ -87,6 +87,33 @@ var SYSTEM_PROMPT_TO_KOREAN =
   'ยืนยัน=확인, ดำเนินการ=진행, ผู้รับผิดชอบ=담당자, เอกสาร=서류, โอนเงิน=입금';
 
 
+
+// ── Azure Cognitive Translator (PRIMARY — 2M chars/month free, no token limits) ──
+const AZURE_KEY    = process.env.AZURE_TRANSLATOR_KEY;
+const AZURE_REGION = process.env.AZURE_TRANSLATOR_REGION || 'eastasia';
+
+async function azureTranslate(text, fromLang, toLang) {
+  if (!AZURE_KEY) return null;
+  try {
+    var aRes = await axios.post(
+      'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&from=' + fromLang + '&to=' + toLang,
+      [{ text: text }],
+      { headers: {
+          'Ocp-Apim-Subscription-Key': AZURE_KEY,
+          'Ocp-Apim-Subscription-Region': AZURE_REGION,
+          'Content-Type': 'application/json'
+      }, timeout: 8000 }
+    );
+    var result = aRes.data[0].translations[0].text.trim();
+    if (!result) return null;
+    console.log('[Translate] Azure ok (' + fromLang + '->' + toLang + ')');
+    return result;
+  } catch (err) {
+    console.warn('[Translate] Azure error:', err.response ? err.response.data : err.message);
+    return null;
+  }
+}
+
 // ── Gemini fallback (4th layer, activates if GEMINI_API_KEY is set) ──────────
 async function geminiTranslate(text, systemPrompt) {
   if (!GEMINI_API_KEY) return null;
@@ -172,9 +199,13 @@ async function translateAll(text) {
 
   if (THAI_REGEX.test(text)) {
     console.log('[TR] th->kr');
-    var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_KOREAN + '\n\nTranslate the following Thai text to Korean:');
-    if (!raw) return null;
-    var kr = cleanKorean(raw);
+    var kr = await azureTranslate(text, 'th', 'ko');
+    if (!kr) {
+      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_KOREAN + '\n\nTranslate the following Thai text to Korean:');
+      kr = raw ? cleanKorean(raw) : null;
+    } else {
+      kr = cleanKorean(kr);
+    }
     if (!kr || !KOREAN_REGEX.test(kr)) return null;
     console.log('[TR] th->kr ok');
     return { kr: kr, th: null };
@@ -182,9 +213,13 @@ async function translateAll(text) {
 
   if (KOREAN_REGEX.test(text)) {
     console.log('[TR] kr->th');
-    var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_THAI + '\n\nTranslate the following Korean text to Thai:');
-    if (!raw) return null;
-    var th = cleanThai(raw);
+    var th = await azureTranslate(text, 'ko', 'th');
+    if (!th) {
+      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_THAI + '\n\nTranslate the following Korean text to Thai:');
+      th = raw ? cleanThai(raw) : null;
+    } else {
+      th = cleanThai(th);
+    }
     if (!th || !THAI_REGEX.test(th)) return null;
     console.log('[TR] kr->th ok');
     return { kr: null, th: th };
@@ -192,9 +227,13 @@ async function translateAll(text) {
 
   if (ENGLISH_REGEX.test(text) && !THAI_REGEX.test(text) && !KOREAN_REGEX.test(text)) {
     console.log('[TR] en->th');
-    var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_THAI + '\n\nTranslate the following English text to Thai:');
-    if (!raw) return null;
-    var th = cleanThai(raw);
+    var th = await azureTranslate(text, 'en', 'th');
+    if (!th) {
+      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_THAI + '\n\nTranslate the following English text to Thai:');
+      th = raw ? cleanThai(raw) : null;
+    } else {
+      th = cleanThai(th);
+    }
     if (!th || !THAI_REGEX.test(th)) return null;
     console.log('[TR] en->th ok');
     return { kr: null, th: th };
