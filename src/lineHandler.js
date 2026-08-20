@@ -130,8 +130,8 @@ async function aiTranslate(text, systemPrompt) {
   // Try each Groq model
   for (var i = 0; i < GROQ_MODELS.length; i++) {
     var model = GROQ_MODELS[i];
-        var aCtrl = new AbortController();
-            var aTimer = setTimeout(function() { aCtrl.abort(); }, 12000);
+        let aCtrl = new AbortController();
+            let aTimer = setTimeout(function() { aCtrl.abort(); }, 12000);
     try {
       var res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
@@ -161,8 +161,8 @@ async function aiTranslate(text, systemPrompt) {
           clearTimeout(aTimer);
       var code = err.response && err.response.data && err.response.data.error && err.response.data.error.code;
       var isLimit = code === 'rate_limit_exceeded' || (err.response && err.response.status === 429);
-      if ((isLimit || err.code === 'ECONNABORTED' || err.code === 'ERR_CANCELED' || aCtrl.signal.aborted) && i < GROQ_MODELS.length - 1) {
-        console.warn('[Translate] ' + (isLimit ? 'rate limit' : 'timeout') + ' on ' + model + ', trying next...');
+      if (i < GROQ_MODELS.length - 1) {
+        console.warn('[Translate] ' + model + ' failed (' + (isLimit ? 'rate-limit' : (aCtrl.signal.aborted ? 'timeout' : err.message)) + '), trying next...');
         continue;
       }
       console.error('[Translate] Groq error on ' + model + ':', err.response ? err.response.data : err.message);
