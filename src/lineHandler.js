@@ -91,6 +91,7 @@ var SYSTEM_PROMPT_TO_KOREAN =
 // ── Azure Cognitive Translator (PRIMARY — 2M chars/month free, no token limits) ──
 const AZURE_KEY    = process.env.AZURE_TRANSLATOR_KEY;
 const AZURE_REGION = process.env.AZURE_TRANSLATOR_REGION || 'eastasia';
+console.log('[Azure] KEY set:', !!AZURE_KEY, '| REGION:', AZURE_REGION);
 
 async function azureTranslate(text, fromLang, toLang) {
   if (!AZURE_KEY) return null;
