@@ -103,7 +103,7 @@ async function geminiTranslate(text, systemPrompt) {
       var gTimer = setTimeout(function() { gCtrl.abort(); }, 30000);
   try {
     const res = await axios.post(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GEMINI_API_KEY,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=' + GEMINI_API_KEY,
       {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ parts: [{ text: text }] }],
