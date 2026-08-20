@@ -115,6 +115,28 @@ async function azureTranslate(text, fromLang, toLang) {
   }
 }
 
+
+// ── MyMemory Translation API (FREE — 10K words/day, no API key needed) ──────
+const MYMEMORY_EMAIL = process.env.MYMEMORY_EMAIL || '';
+
+async function myMemoryTranslate(text, fromLang, toLang) {
+  try {
+    var langPair = fromLang + '|' + toLang;
+    var url = 'https://api.mymemory.translated.net/get?q=' +
+      encodeURIComponent(text) + '&langpair=' + langPair +
+      (MYMEMORY_EMAIL ? '&de=' + encodeURIComponent(MYMEMORY_EMAIL) : '');
+    var res = await axios.get(url, { timeout: 8000 });
+    if (res.data.responseStatus !== 200) return null;
+    var result = res.data.responseData.translatedText;
+    if (!result || result === text) return null;
+    console.log('[Translate] MyMemory ok (' + fromLang + '->' + toLang + ')');
+    return result;
+  } catch (err) {
+    console.warn('[Translate] MyMemory error:', err.message);
+    return null;
+  }
+}
+
 // ── Gemini fallback (4th layer, activates if GEMINI_API_KEY is set) ──────────
 async function geminiTranslate(text, systemPrompt) {
   if (!GEMINI_API_KEY) return null;
@@ -145,14 +167,20 @@ async function geminiTranslate(text, systemPrompt) {
 // ── Groq models (3 primary + Gemini as 4th) ─────────────────────────────────
 var GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
 
-async function aiTranslate(text, systemPrompt) {
-  // PRIMARY: Gemini (1M tokens/day free vs Groq 200K/day — far more generous)
+async function aiTranslate(text, systemPrompt, fromLang, toLang) {
+  // PRIMARY: Gemini
   if (GEMINI_API_KEY) {
     var gemResult = await geminiTranslate(text, systemPrompt);
     if (gemResult) return gemResult;
-    console.warn('[Translate] Gemini failed, falling back to Groq...');
+    console.warn('[Translate] Gemini failed, trying MyMemory...');
   }
-  // FALLBACK: Groq models
+  // FALLBACK 1: MyMemory (free, no key needed)
+  if (fromLang && toLang) {
+    var mmResult = await myMemoryTranslate(text, fromLang, toLang);
+    if (mmResult) return mmResult;
+    console.warn('[Translate] MyMemory failed, trying Groq...');
+  }
+  // FALLBACK 2: Groq models
   for (var i = 0; i < GROQ_MODELS.length; i++) {
     var model = GROQ_MODELS[i];
     let aCtrl = new AbortController();
@@ -202,7 +230,7 @@ async function translateAll(text) {
     console.log('[TR] th->kr');
     var kr = await azureTranslate(text, 'th', 'ko');
     if (!kr) {
-      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_KOREAN + '\n\nTranslate the following Thai text to Korean:');
+      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_KOREAN + '\n\nTranslate the following Thai text to Korean:', 'th', 'ko');
       kr = raw ? cleanKorean(raw) : null;
     } else {
       kr = cleanKorean(kr);
@@ -216,7 +244,7 @@ async function translateAll(text) {
     console.log('[TR] kr->th');
     var th = await azureTranslate(text, 'ko', 'th');
     if (!th) {
-      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_THAI + '\n\nTranslate the following Korean text to Thai:');
+      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_THAI + '\n\nTranslate the following Korean text to Thai:', 'ko', 'th');
       th = raw ? cleanThai(raw) : null;
     } else {
       th = cleanThai(th);
@@ -230,7 +258,7 @@ async function translateAll(text) {
     console.log('[TR] en->th');
     var th = await azureTranslate(text, 'en', 'th');
     if (!th) {
-      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_THAI + '\n\nTranslate the following English text to Thai:');
+      var raw = await aiTranslate(text, SYSTEM_PROMPT_TO_THAI + '\n\nTranslate the following English text to Thai:', 'en', 'th');
       th = raw ? cleanThai(raw) : null;
     } else {
       th = cleanThai(th);
