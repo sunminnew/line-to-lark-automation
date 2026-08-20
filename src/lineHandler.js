@@ -124,7 +124,7 @@ async function geminiTranslate(text, systemPrompt) {
 }
 
 // ── Groq models (3 primary + Gemini as 4th) ─────────────────────────────────
-var GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
+var GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'gemma2-9b-it', 'llama3-70b-8192'];
 
 async function aiTranslate(text, systemPrompt) {
   // Try each Groq model
