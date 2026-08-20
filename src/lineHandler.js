@@ -127,11 +127,17 @@ async function geminiTranslate(text, systemPrompt) {
 var GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
 
 async function aiTranslate(text, systemPrompt) {
-  // Try each Groq model
+  // PRIMARY: Gemini (1M tokens/day free vs Groq 200K/day — far more generous)
+  if (GEMINI_API_KEY) {
+    var gemResult = await geminiTranslate(text, systemPrompt);
+    if (gemResult) return gemResult;
+    console.warn('[Translate] Gemini failed, falling back to Groq...');
+  }
+  // FALLBACK: Groq models
   for (var i = 0; i < GROQ_MODELS.length; i++) {
     var model = GROQ_MODELS[i];
-        let aCtrl = new AbortController();
-            let aTimer = setTimeout(function() { aCtrl.abort(); }, 12000);
+    let aCtrl = new AbortController();
+    let aTimer = setTimeout(function() { aCtrl.abort(); }, 12000);
     try {
       var res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
@@ -147,30 +153,23 @@ async function aiTranslate(text, systemPrompt) {
         { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY }, signal: aCtrl.signal }
       );
       var result = res.data.choices[0].message.content.trim();
-          clearTimeout(aTimer);
-
-
+      clearTimeout(aTimer);
       if (isRepetitive(result)) {
         console.warn('[Translate] repetition on ' + model + ', trying next...');
         continue;
       }
-      if (i > 0) console.log('[Translate] used fallback model:', model);
-          clearTimeout(aTimer);
+      console.log('[Translate] Groq fallback used model:', model);
       return result;
     } catch (err) {
-          clearTimeout(aTimer);
-      var code = err.response && err.response.data && err.response.data.error && err.response.data.error.code;
-      var isLimit = code === 'rate_limit_exceeded' || (err.response && err.response.status === 429);
+      clearTimeout(aTimer);
       if (i < GROQ_MODELS.length - 1) {
-        console.warn('[Translate] ' + model + ' failed (' + (isLimit ? 'rate-limit' : (aCtrl.signal.aborted ? 'timeout' : err.message)) + '), trying next...');
+        console.warn('[Translate] ' + model + ' failed, trying next Groq model...');
         continue;
       }
-      console.error('[Translate] Groq error on ' + model + ':', err.response ? err.response.data : err.message);
+      console.error('[Translate] all models exhausted. Last error:', err.response ? err.response.data : err.message);
     }
   }
-  // 4th fallback: Gemini
-  console.warn('[Translate] all Groq models failed, trying Gemini...');
-  return await geminiTranslate(text, systemPrompt);
+  return null;
 }
 
 // ── translateAll: returns { kr, th } or null ─────────────────────────────────
