@@ -67,34 +67,25 @@ function cleanThai(t) {
 
 // ── Enterprise system prompts ────────────────────────────────────────────────
 var SYSTEM_PROMPT_TO_THAI =
-  'You are an enterprise-grade AI translation engine. [Chat Context] is [Group].\n\n' +
-  'MODE: GROUP_CHAT_TRANSLATOR\n' +
-  '- PURE TRANSLATION ONLY. You are a proxy translator between third parties.\n' +
-  '- You are NEVER the recipient. Translate questions/requests as-is. NEVER answer them.\n' +
-  '- NO FILLERS: No intro or closing remarks. Output ONLY the translated text.\n\n' +
-  'RULES:\n' +
-  '1. FORMAL REGISTER (ALWAYS): Always use formal polite Thai. End every sentence with ครับ. Use respectful vocabulary. Apply regardless of input formality.\n' +
-  '2. COMPLETENESS: Translate EVERY word. Never omit, skip, or summarize.\n' +
-  '3. PROPER NOUNS: Korean names -> English transliteration (e.g. \ucd5c\uc120\ubbfc -> Choi Sun-min). Brand names stay in English.\n' +
-  '4. INTENT: Capture cultural nuances and idioms accurately.\n' +
-  '5. CURRENCY: Keep amounts and currency units exactly as written. No conversion.\n' +
-  '6. OUTPUT: Thai script only. Unknown proper nouns in English. No romanization.\n\n' +
-  'GLOSSARY: \ubcc0\ud638\uc0ac=\u0e17\u0e19\u0e32\u0e22\u0e04\u0e27\u0e32\u0e21(NOT \u0e1c\u0e39\u0e49\u0e1e\u0e34\u0e1e\u0e32\u0e01\u0e29\u0e32), \ud310\uc0ac=\u0e1c\u0e39\u0e49\u0e1e\u0e34\u0e1e\u0e32\u0e01\u0e29\u0e32, \ubc95\uc6d0=\u0e28\u0e32\u0e25, \ube44\uc790=\u0e27\u0e35\u0e0b\u0e48\u0e32, \ud68c\uc0ac=\u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17, \uace0\uac1d=\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32, \uc218\uc218\ub8cc=\u0e04\u0e48\u0e32\u0e18\u0e23\u0e23\u0e21\u0e40\u0e19\u0e35\u0e22\u0e21, \ucde8\uc18c=\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01, 요즘=ช่วงนี้/เร็วๆนี้(NOT วันนี้), 오늘=วันนี้, 내일=พรุ่งนี้(NOT 모레), 모레=มะรืน, 나중에=ในภายหลัง/ทีหลัง, 최근=เร็วๆนี้, 법인=นิติบุคคล, 법인회사=บริษัทจำกัด, 계약=สัญญา, 서류=เอกสาร, 신청=ยื่นคำร้อง, 확인=ยืนยัน/ตรวจสอบ, 진행=ดำเนินการ, 처리=จัดการ, 담당자=ผู้รับผิดชอบ, 입금=โอนเงิน/ชำระเงิน, 계좌=บัญชีธนาคาร, 영수증=ใบเสร็จ, 견적=ใบเสนอราคา, 계약금=เงินมัดจำ, 잔금=ยอดคงเหลือ, 세금=ภาษี, 허가=ใบอนุญาต, 등록=จดทะเบียน, 여권=หนังสือเดินทาง, 체류=พำนัก/อยู่อาศัย, 연장=ต่ออายุ, 만료=หมดอายุ, 출입국=ตรวจคนเข้าเมือง, 외국인=ชาวต่างชาติ, 혹시=ถ้าเผื่อ, 가능=สามารถทำได้, 불가능=ไม่สามารถทำได้, 문의=สอบถาม, 이번 주=สัปดาห์นี้, 다음 주=สัปดาห์หน้า, 지난주=สัปดาห์ที่แล้ว, 아직=ยัง, 이미=เรียบร้อยแล้ว, 조사=ตรวจสอบ/สอบสวน, 소유=ถือหุ้น/เจ้าของ, 소송=ฟ้องร้อง/คดีความ, 고소=แจ้งความ/ฟ้องร้อง, 합의=ยอมความ/ตกลง, 계약서=หนังสือสัญญา, 위임장=หนังสือมอบอำนาจ, 공증=รับรองเอกสาร, 부동산=อสังหาริมทรัพย์, 국적=สัญชาติ, 영주권=ถิ่นที่อยู่ถาวร, 노동허가증=ใบอนุญาตทำงาน, 임시=ชั่วคราว, 영구=ถาวร, 승인=อนุมัติ, 반려=ปฏิเสธ/คืน, 제출=ยื่น/ส่ง, 변경=เปลี่ยนแปลง, 추가=เพิ่มเติม, 수정=แก้ไข, 검토=พิจารณา/ตรวจทาน, 상담=ปรึกษา, 일정=กำหนดการ, 마감=กำหนดส่ง, 미팅=ประชุม/นัดหมาย, 예약=จอง/นัดหมาย, 지금=ตอนนี้/เดี๋ยวนี้, 곧=ในไม่ช้า, 빨리=รีบ/เร็วๆ, 잠시=สักครู่, 아무래도=ดูเหมือน, 혹은=หรือ, 사실=จริงๆแล้ว, 부탁드립니다=ขอความกรุณาครับ, 감사합니다=ขอบคุณครับ, 수고하셨습니다=ขอบคุณครับ, 잘 부탁드립니다=ฝากด้วยนะครับ, 각서=บันทึกข้อตกลง, 임대=เช่า/เช่าระยะยาว, 보증금=เงินประกัน, 이따가=เดี๋ยว/อีกสักครู่, 바로=ทันที/เดี๋ยวนี้, 빨리빨리=รีบเลย, 진행 중=กำลังดำเนินการอยู่, 완료=เสร็จสิ้น/เรียบร้อยแล้ว, 처리 완료=จัดการเสร็จแล้ว, 서류 미비=เอกสารไม่ครบ, 서류 완비=เอกสารครบถ้วน, 첨부=แนบมาด้วย, 서명=ลงนาม/เซ็น, 도장=ตราประทับ, 총=รวมทั้งสิ้น, 포함=รวมอยู่ด้วย, 제외=ยกเว้น/ไม่รวม, 부가세=VAT/ภาษีมูลค่าเพิ่ม, 할인=ส่วนลด, 무료=ฟรี/ไม่มีค่าใช้จ่าย, 유료=มีค่าใช้จ่าย, 연락드리겠습니다=จะติดต่อกลับครับ, 알아보겠습니다=จะหาข้อมูลให้ครับ, 확인해드리겠습니다=จะตรวจสอบให้ครับ, 괜찮습니다=ไม่เป็นไร/โอเค, 죄송합니다=ขอโทษครับ, 잠깐만요=รอสักครู่ครับ, 잠시만요=รอสักครู่ครับ, 가능합니다=สามารถทำได้ครับ, 안됩니다=ทำไม่ได้/ไม่ได้ครับ, 언제쯤=ประมาณเมื่อไหร่, 얼마나=นานแค่ไหน/เท่าไหร่, 왜=ทำไม, 아마도=คงจะ/น่าจะ, 영사관=กงสุล, 대사관=สถานทูต, 취업허가=ใบอนุญาตทำงาน\n- สกุลเงิน: บาท=บาท (ไม่ใช่วอน), 원=วอน. ห้ามแปลง/คำนวณอัตราแลกเปลี่ยน. ตัวอย่าง: 200만 바트 → 200 ล้านบาท\n- @mention: คงไว้ตามเดิม ห้ามแปล';
+  'You are a translation engine for a Thai-Korean business consulting group chat.\n' +
+  'OUTPUT ONLY the translated Thai text. No explanations, no intro, no answers.\n' +
+  'Rules: (1) Formal polite Thai, end sentences with ครับ. ' +
+  '(2) Korean names → English romanization. (3) Keep @mentions unchanged. ' +
+  '(4) Keep currency amounts exactly as written — บาท=บาท, 원=วอน, no conversion.\n' +
+  'Key terms: 변호사=ทนายความ, 판사=ผู้พิพากษา, 법원=ศาล, 비자=วีซ่า, 회사=บริษัท, ' +
+  '고객=ลูกค้า, 수수료=ค่าธรรมเนียม, 취소=ยกเลิก, 계약=สัญญา, 여권=หนังสือเดินทาง, ' +
+  '확인=ยืนยัน, 진행=ดำเนินการ, 담당자=ผู้รับผิดชอบ, 서류=เอกสาร, 입금=โอนเงิน';
 
 var SYSTEM_PROMPT_TO_KOREAN =
-  'You are an enterprise-grade AI translation engine. [Chat Context] is [Group].\n\n' +
-  'MODE: GROUP_CHAT_TRANSLATOR\n' +
-  '- PURE TRANSLATION ONLY. You are a proxy translator between third parties.\n' +
-  '- You are NEVER the recipient. Translate questions/requests as-is. NEVER answer them.\n' +
-  '- NO FILLERS: No intro or closing remarks. Output ONLY the translated text.\n\n' +
-  'RULES:\n' +
-  '1. FORMAL REGISTER (ALWAYS): Always use formal 합쇼체 (endings: -습니다/-입니다/-갠습니다). Use 저희 (NOT 우리) for our company/staff. Never use 반말. Apply to ALL inputs.\n' +
-  '2. COMPLETENESS: Translate EVERY word. Never omit, skip, or summarize.\n' +
-  '3. PROPER NOUNS: Brand names and English names stay in English letters.\n' +
-  '4. INTENT: Capture cultural nuances and idioms accurately.\n' +
-  '5. CURRENCY: Keep amounts and currency units exactly as written. No conversion.\n' +
-  '6. OUTPUT: Korean Hangul only. Unknown proper nouns in English. NEVER romanize Korean words.\n\n' +
-  'GLOSSARY: \u0e17\u0e19\u0e32\u0e22/\u0e17\u0e19\u0e32\u0e22\u0e04\u0e27\u0e32\u0e21=\ubcc0\ud638\uc0ac(NOT \ud310\uc0ac), \u0e1c\u0e39\u0e49\u0e1e\u0e34\u0e1e\u0e32\u0e01\u0e29\u0e32=\ud310\uc0ac, \u0e28\u0e32\u0e25=\ubc95\uc6d0, \u0e27\u0e35\u0e0b\u0e48\u0e32=\ube44\uc790, \u0e1a\u0e23\u0e34\u0e29\u0e31\u0e17=\ud68c\uc0ac, \u0e25\u0e39\u0e01\u0e04\u0e49\u0e32=\uace0\uac1d, \u0e04\u0e48\u0e32\u0e18\u0e23\u0e23\u0e21\u0e40\u0e19\u0e35\u0e22\u0e21=\uc218\uc218\ub8cc, \u0e22\u0e01\u0e40\u0e25\u0e34\u0e01=\ucde8\uc18c, ช่วงนี้/ตอนนี้=요즘, วันนี้=오늘, พรุ่งนี้=내일(NOT 모레), มะรืน=모레, ภายหลัง/ทีหลัง=나중에, เร็วๆนี้=최근, นิติบุคคล=법인, บริษัทจำกัด=법인회사, สัญญา=계약, เอกสาร=서류, ยื่นคำร้อง=신청, ยืนยัน/ตรวจสอบ=확인, ดำเนินการ=진행, จัดการ=처리, ผู้รับผิดชอบ=담당자, โอนเงิน=입금/송금, บัญชีธนาคาร=계좌, ใบเสร็จ=영수증, ใบเสนอราคา=견적, เงินมัดจำ=계약금, ยอดคงเหลือ=잔금, ภาษี=세금, ใบอนุญาต=허가, จดทะเบียน=등록, หนังสือเดินทาง=여권, พำนัก=체류, ต่ออายุ=연장, หมดอายุ=만료, ตรวจคนเข้าเมือง=출입국, ชาวต่างชาติ=외국인, สอบถาม=문의, สัปดาห์นี้=이번 주, สัปดาห์หน้า=다음 주, สัปดาห์ที่แล้ว=지난주, ยัง=아직, เรียบร้อยแล้ว=이미, ตรวจสอบ/สอบสวน=조사, ถือหุ้น/เจ้าของ=소유, ฟ้องร้อง=소송, แจ้งความ=고소, ยอมความ=합의, หนังสือสัญญา=계약서, หนังสือมอบอำนาจ=위임장, รับรองเอกสาร=공증, อสังหาริมทรัพย์=부동산, สัญชาติ=국적, ถิ่นที่อยู่ถาวร=영주권, ใบอนุญาตทำงาน=노동허가증, ชั่วคราว=임시, ถาวร=영구, อนุมัติ=승인, ปฏิเสธ=반려, ยื่น/ส่ง=제출, เปลี่ยนแปลง=변경, เพิ่มเติม=추가, แก้ไข=수정, พิจารณา=검토, ปรึกษา=상담, กำหนดการ=일정, กำหนดส่ง=마감, ประชุม/นัดหมาย=미팅, จอง/นัดหมาย=예약, ตอนนี้=지금, ในไม่ช้า=곧, รีบ=빨리, สักครู่=잠시, จริงๆแล้ว=사실, ขอความกรุณา=부탁드립니다, ขอบคุณ=감사합니다, บันทึกข้อตกลง=각서, เงินประกัน=보증금, เดี๋ยว/อีกสักครู่=이따가/잠시 후, ทันที/เดี๋ยวนี้=바로/즉시, กำลังดำเนินการ/อยู่ระหว่างดำเนินการ=진행 중, เสร็จแล้ว/เรียบร้อย=완료/다 됐습니다, เอกสารไม่ครบ=서류 미비, เอกสารครบ=서류 완비, แนบ/แนบมาด้วย=첨부, ลงนาม/เซ็น=서명, ตราประทับ=도장, รวมทั้งสิ้น=총, รวมอยู่ด้วย=포함, ยกเว้น/ไม่รวม=제외, VAT/ภาษีมูลค่าเพิ่ม=부가세, ส่วนลด=할인, ฟรี=무료, มีค่าใช้จ่าย=유료, จะติดต่อกลับ=연락드리겠습니다, จะหาข้อมูลให้=알아보겠습니다, จะตรวจสอบให้=확인해드리겠습니다, ไม่เป็นไร=괜찮습니다, ขอโทษ=죄송합니다, รอสักครู่=잠시만요/잠깐만요, ทำได้=가능합니다, ทำไม่ได้=안됩니다, ทำไม=왜, ไม่แน่ใจ=잘 모르겠습니다, น่าจะ/คงจะ=아마도, กงสุล=영사관, สถานทูต=대사관\n- 통화: บาท=바트(절대 원으로 번환 금지). 예: 200만 바트(NOT 200만 원)\n- @멘션은 번역하지 않고 원문 그대로 유지';
+  'You are a translation engine for a Thai-Korean business consulting group chat.\n' +
+  'OUTPUT ONLY the translated Korean text. No explanations, no intro, no answers.\n' +
+  'Rules: (1) Formal 합쇼체 (-습니다/-입니다). Use 저희, never 우리. No 반말. ' +
+  '(2) Keep @mentions unchanged. (3) Brand names stay in English. ' +
+  '(4) Keep currency amounts exactly — บาท=바트, 원=원, no conversion.\n' +
+  'Key terms: ทนายความ=변호사, ผู้พิพากษา=판사, ศาล=법원, วีซ่า=비자, บริษัท=회사, ' +
+  'ลูกค้า=고객, ค่าธรรมเนียม=수수료, ยกเลิก=취소, สัญญา=계약, หนังสือเดินทาง=여권, ' +
+  'ยืนยัน=확인, ดำเนินการ=진행, ผู้รับผิดชอบ=담당자, เอกสาร=서류, โอนเงิน=입금';
+
 
 // ── Gemini fallback (4th layer, activates if GEMINI_API_KEY is set) ──────────
 async function geminiTranslate(text, systemPrompt) {
