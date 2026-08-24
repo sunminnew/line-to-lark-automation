@@ -172,7 +172,7 @@ async function geminiTranslate(text, systemPrompt) {
 }
 
 // ── Groq LLMs (200K tokens/day free) ────────────────────────────────────────
-var GROQ_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'];
+var GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'];
 
 // ── aiTranslate: Cache -> Gemini -> Groq-20b -> Groq-120b ───────────────────
 async function aiTranslate(text, systemPrompt, fromLang, toLang) {
