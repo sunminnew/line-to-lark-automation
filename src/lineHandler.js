@@ -31,10 +31,17 @@ function verifySignature(rawBody, signature) {
 // ── Repetition detector ──────────────────────────────────────────────────────
 function isRepetitive(text) {
   if (!text || text.length < 20) return false;
-  if (text.length > 4000) return true;
-  if (text.length < 100) return false;
+  if (text.length > 2500) return true; // unusually long = hallucination
+  if (text.length < 60) return false;
   var tokens = text.trim().split(/\s+/);
-  if (tokens.length < 10) return false;
+  if (tokens.length < 6) return false;
+  // Frequency check: any single token > 25% of total = repetitive loop
+  var freq = {};
+  for (var j = 0; j < tokens.length; j++) {
+    freq[tokens[j]] = (freq[tokens[j]] || 0) + 1;
+    if (freq[tokens[j]] / tokens.length > 0.25) return true;
+  }
+  // Trigram check
   var seen = {};
   for (var i = 0; i < tokens.length - 2; i++) {
     var tri = tokens[i] + ' ' + tokens[i + 1] + ' ' + tokens[i + 2];
