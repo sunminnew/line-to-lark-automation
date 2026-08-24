@@ -151,6 +151,9 @@ async function geminiTranslate(text, systemPrompt) {
     clearTimeout(timer);
     var result = res.data.candidates[0].content.parts[0].text.trim();
     if (isRepetitive(result)) return null;
+    // Verify expected script
+    if (systemPrompt.includes('Korean') && !/[\uac00-\ud7af]/.test(result)) return null;
+    if (systemPrompt.includes('Thai') && !/[\u0e00-\u0e7f]/.test(result)) return null;
     console.log('[Translate] Gemini ok');
     return result;
   } catch (err) {
@@ -203,6 +206,9 @@ async function aiTranslate(text, systemPrompt, fromLang, toLang) {
       var groqResult = res.data.choices[0].message.content.trim();
       clearTimeout(aTimer);
       if (isRepetitive(groqResult)) { console.warn('[Translate] repetition on ' + model + ', trying next...'); continue; }
+      // Verify output contains expected script — reject if wrong language
+      if (toLang === 'ko' && !/[\uac00-\ud7af]/.test(groqResult)) { console.warn('[Translate] no Korean chars from ' + model + ', trying next...'); continue; }
+      if (toLang === 'th' && !/[\u0e00-\u0e7f]/.test(groqResult)) { console.warn('[Translate] no Thai chars from ' + model + ', trying next...'); continue; }
       console.log('[Translate] Groq ok: ' + model);
       setCached(cacheKey, groqResult);
       return groqResult;
