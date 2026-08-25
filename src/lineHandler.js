@@ -206,7 +206,7 @@ async function aiTranslate(text, systemPrompt, fromLang, toLang) {
   for (var i = 0; i < GROQ_MODELS.length; i++) {
     var model = GROQ_MODELS[i];
     var aCtrl = new AbortController();
-    var aTimer = setTimeout(function() { aCtrl.abort(); }, 15000);
+    var aTimer = setTimeout(function() { aCtrl.abort(); }, 25000);
     try {
       var res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
