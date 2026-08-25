@@ -261,7 +261,7 @@ function scheduleTranslation(sourceId, text, replyToken) {
     msgBuf.delete(sourceId);
     const combined = texts.join('\n');
     try {
-      const tr = await withTimeout(translateAll(combined), 50000, 'translateAll');
+      const tr = await withTimeout(translateAll(combined), 75000, 'translateAll');
       const replies = [];
       if (tr && tr.kr) replies.push(...toLineMessages('KR: ', tr.kr));
       if (tr && tr.th) replies.push(...toLineMessages('TH: ', tr.th));
