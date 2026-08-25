@@ -21,6 +21,86 @@ const { sendToLarkGroup, sendSummaryCard, sendAlertCard } = require('./larkMesse
 const { recordActivity, addOffHoursMessage, consumeHolidayReminder } = require('./messageTracker');
 const { isQuestion, answerAIUrgent, analyzeForLark } = require('./smartAdvisor');
 
+
+// ── Live Log Broadcaster (SSE) ────────────────────────────────────────────────
+const _lc = new Set();
+const _lb = [];
+function _bcast(level, msg) {
+  const e = { t: new Date().toISOString(), l: level, m: String(msg) };
+  _lb.push(e); if (_lb.length > 300) _lb.shift();
+  const d = 'data: ' + JSON.stringify(e) + '\n\n';
+  for (const c of _lc) { try { c.write(d); } catch (_) { _lc.delete(c); } }
+}
+const _cl = console.log, _cw = console.warn, _ce = console.error;
+console.log   = (...a) => { _cl(...a);  _bcast('info',  a.join(' ')); };
+console.warn  = (...a) => { _cw(...a);  _bcast('warn',  a.join(' ')); };
+console.error = (...a) => { _ce(...a);  _bcast('error', a.join(' ')); };
+
+const LOGS_HTML = `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wisdom Bot Live Logs</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#e6edf3;font-family:monospace;font-size:13px;height:100vh;display:flex;flex-direction:column}
+header{background:#161b22;border-bottom:1px solid #30363d;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:15px;color:#58a6ff;white-space:nowrap}
+#status{width:10px;height:10px;border-radius:50%;background:#f85149;flex-shrink:0}
+#status.ok{background:#3fb950}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.filters button{background:#21262d;border:1px solid #30363d;color:#8b949e;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px}
+.filters button.active{background:#1f6feb;border-color:#388bfd;color:#fff}
+.stats{margin-left:auto;display:flex;gap:12px;font-size:11px;color:#8b949e}
+#log{flex:1;overflow-y:auto;padding:8px 12px}
+.row{padding:2px 0;border-bottom:1px solid #161b22;display:flex;gap:8px;align-items:flex-start}
+.ts{color:#484f58;flex-shrink:0;font-size:11px;padding-top:1px}
+.msg{word-break:break-all;line-height:1.5}
+.info .msg{color:#e6edf3}
+.warn .msg{color:#e3b341}
+.error .msg{color:#f85149;font-weight:bold}
+.ok .msg{color:#3fb950}
+.hit .msg{color:#a5d6ff}
+footer{background:#161b22;border-top:1px solid #30363d;padding:6px 12px;font-size:11px;color:#484f58;display:flex;justify-content:space-between;align-items:center}
+#autoscroll{accent-color:#58a6ff}
+</style></head><body>
+<header>
+  <span id="status"></span>
+  <h1>🤖 Wisdom Bot — Live Logs</h1>
+  <div class="filters">
+    <button class="active" onclick="setFilter('all',this)">ทั้งหมด</button>
+    <button onclick="setFilter('translate',this)">การแปล</button>
+    <button onclick="setFilter('error',this)">❌ Error</button>
+  </div>
+  <div class="stats"><span id="s-ok">✅ 0</span><span id="s-err">❌ 0</span><span id="s-msg">📩 0</span></div>
+</header>
+<div id="log"></div>
+<footer><span id="count">0 รายการ</span><label><input type="checkbox" id="autoscroll" checked> Auto-scroll</label></footer>
+<script>
+let filter='all', cOk=0, cErr=0, cMsg=0, total=0;
+const log=document.getElementById('log'), st=document.getElementById('status');
+const sOk=document.getElementById('s-ok'), sErr=document.getElementById('s-err'), sMsg=document.getElementById('s-msg');
+const cnt=document.getElementById('count'), as=document.getElementById('autoscroll');
+
+function setFilter(f,btn){filter=f;document.querySelectorAll('.filters button').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.row').forEach(r=>r.style.display=shouldShow(r.dataset.m)?'flex':'none');}
+function shouldShow(m){if(!m)return true;if(filter==='error')return/error|failed|exhausted|429/i.test(m);if(filter==='translate')return/[TR]|[Translate]|[LINE]/i.test(m);return true;}
+function rowClass(l,m){if(l==='error'||/error|failed|exhausted/i.test(m))return'error';if(l==='warn'||/429|cooldown|trying next/i.test(m))return'warn';if(/Reply ok|Cache hit|ok/i.test(m))return'ok';if(/Cache hit/i.test(m))return'hit';return'info';}
+function addRow(e){
+  const cls=rowClass(e.l,e.m);
+  total++;cnt.textContent=total+' รายการ';
+  if(cls==='ok')cOk++;if(cls==='error'){cErr++;sErr.textContent='❌ '+cErr;}
+  if(/Store.*message/i.test(e.m)){cMsg++;sMsg.textContent='📩 '+cMsg;}
+  sOk.textContent='✅ '+cOk;
+  const d=document.createElement('div');
+  d.className='row '+cls;d.dataset.m=e.m;
+  d.style.display=shouldShow(e.m)?'flex':'none';
+  const ts=e.t.slice(11,19);
+  d.innerHTML='<span class="ts">'+ts+'</span><span class="msg">'+e.m.replace(/</g,'&lt;')+'</span>';
+  log.appendChild(d);
+  if(log.children.length>500)log.removeChild(log.firstChild);
+  if(as.checked)log.scrollTop=log.scrollHeight;
+}
+const es=new EventSource('/logs/stream');
+es.onopen=()=>st.className='ok';
+es.onerror=()=>st.className='';
+es.onmessage=e=>{try{addRow(JSON.parse(e.data));}catch(_){}};
+<\/script></body></html>`;
+
 const app = express();
 const PORT = process.env.PORT ?? 3000;
 const LINE_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -129,6 +209,19 @@ function isSummaryRequest(text) {
 }
 
 // ── Health check ──────────────────────────────────────────────────────────────
+// ── Live Log Dashboard ───────────────────────────────────────────────────────
+app.get('/logs', (_req, res) => res.send(LOGS_HTML));
+app.get('/logs/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+  for (const e of _lb) res.write('data: ' + JSON.stringify(e) + '\n\n');
+  _lc.add(res);
+  req.on('close', () => _lc.delete(res));
+});
+
 app.get('/', (_req, res) => res.json({
   status: 'ok',
   bangkokTime: getBangkokTime(),
