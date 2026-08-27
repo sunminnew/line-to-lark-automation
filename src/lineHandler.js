@@ -182,7 +182,8 @@ async function geminiTranslate(text, systemPrompt) {
 }
 
 // ── Groq LLMs (200K tokens/day free) ────────────────────────────────────────
-var GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'];
+var GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'qwen/qwen3.6-27b'];
+var groqCooldown = {};
 
 // ── aiTranslate: Cache -> Gemini -> Groq-20b -> Groq-120b ───────────────────
 async function aiTranslate(text, systemPrompt, fromLang, toLang) {
@@ -205,6 +206,12 @@ async function aiTranslate(text, systemPrompt, fromLang, toLang) {
   // 2. Groq LLM models
   for (var i = 0; i < GROQ_MODELS.length; i++) {
     var model = GROQ_MODELS[i];
+    if (groqCooldown[model] && Date.now() < groqCooldown[model]) {
+      var _rem = Math.ceil((groqCooldown[model] - Date.now()) / 1000);
+      console.log('[Translate] Groq ' + model + ' cooldown ' + _rem + 's, skip');
+      if (i < GROQ_MODELS.length - 1) continue;
+      console.warn('[Translate] All Groq in cooldown'); break;
+    }
     var aCtrl = new AbortController();
     var aTimer = setTimeout(function() { aCtrl.abort(); }, 25000);
     try {
@@ -224,8 +231,16 @@ async function aiTranslate(text, systemPrompt, fromLang, toLang) {
       return groqResult;
     } catch (err) {
       clearTimeout(aTimer);
-      if (i < GROQ_MODELS.length - 1) { console.warn('[Translate] ' + model + ' failed, trying next...'); continue; }
-      console.error('[Translate] Groq exhausted:', err.response ? err.response.data : err.message);
+      if (err.response && err.response.status === 429) {
+        var _ra = err.response.headers && err.response.headers['retry-after'];
+        var _w = _ra ? parseFloat(_ra) + 2 : 35;
+        groqCooldown[model] = Date.now() + _w * 1000;
+        console.warn('[Translate] Groq ' + model + ' 429, cooldown ' + Math.ceil(_w) + 's');
+      } else {
+        console.warn('[Translate] Groq ' + model + ' err:', err.response ? err.response.status : err.message);
+      }
+      if (i < GROQ_MODELS.length - 1) continue;
+      console.error('[Translate] Groq exhausted');
     }
   }
   return null;
