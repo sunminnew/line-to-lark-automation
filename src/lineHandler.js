@@ -236,7 +236,14 @@ async function translateAll(text) {
   var cleanText = text.replace(/https?:\/\/[^\s]+/g, '').trim();
   if (!cleanText) return null;
   text = cleanText;
-  if (THAI_REGEX.test(text) && KOREAN_REGEX.test(text)) return null;
+  // Skip only if BOTH scripts are substantial (≥20% each) — lone @mention with Korean name should still translate
+  var _th = (text.match(/[\u0e00-\u0e7f]/g)||[]).length;
+  var _kr = (text.match(/[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/g)||[]).length;
+  if (_th > 0 && _kr > 0) {
+    var _tot = _th + _kr;
+    if (_th/_tot >= 0.20 && _kr/_tot >= 0.20) return null; // genuinely mixed
+    // else: one script dominates → translate based on dominant script below
+  }
 
   if (THAI_REGEX.test(text)) {
     if (/^(ค่ะ|คะ|ครับ|นะคะ|นะค่ะ|นะครับ|จ้า|จ้ะ|ค่ะๆ|คะๆ|ครับๆ)$/.test(text.trim())) { console.log('[TR] particle-only, returning 네'); return { kr: '네', th: null }; }
