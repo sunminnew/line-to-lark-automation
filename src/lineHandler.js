@@ -138,47 +138,51 @@ async function azureTranslate(text, fromLang, toLang) {
 }
 
 // ── Gemini (smart cooldown — reads retry-after from 429 response) ────────────
-var geminiCooldownUntil = 0;
+var GEMINI_MODELS_LIST = ['gemini-3.6-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+var geminiModelCooldown = {};
 
 async function geminiTranslate(text, systemPrompt) {
   if (!GEMINI_API_KEY) return null;
-  if (Date.now() < geminiCooldownUntil) {
-    console.log('[Translate] Gemini cooldown ' + Math.ceil((geminiCooldownUntil - Date.now()) / 1000) + 's, skip');
-    return null;
-  }
-  var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 20000);
-  try {
-    var res = await axios.post(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=' + GEMINI_API_KEY,
-      {
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: text }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: calcMaxTokens(text) },
-      },
-      { headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal }
-    );
-    clearTimeout(timer);
-    var result = res.data.candidates[0].content.parts[0].text.trim();
-    if (isRepetitive(result)) return null;
-    // Verify expected script
-    if (systemPrompt.includes('Korean') && !/[\uac00-\ud7af]/.test(result)) return null;
-    if (systemPrompt.includes('Thai') && !/[\u0e00-\u0e7f]/.test(result)) return null;
-    console.log('[Translate] Gemini ok');
-    return result;
-  } catch (err) {
-    clearTimeout(timer);
-    if (err.response && err.response.status === 429) {
-      var msg = (err.response.data && err.response.data.error && err.response.data.error.message) || '';
-      var m = msg.match(/retry in ([\d.]+)s/i);
-      var waitSec = m ? parseFloat(m[1]) + 3 : 62;
-      geminiCooldownUntil = Date.now() + waitSec * 1000;
-      console.warn('[Translate] Gemini 429 — cooldown ' + Math.ceil(waitSec) + 's');
-    } else {
-      console.error('[Translate] Gemini error:', err.response ? err.response.data : err.message);
+  for (var gi = 0; gi < GEMINI_MODELS_LIST.length; gi++) {
+    var gm = GEMINI_MODELS_LIST[gi];
+    var gCd = geminiModelCooldown[gm] || 0;
+    if (Date.now() < gCd) {
+      console.log('[Translate] Gemini ' + gm + ' cooldown ' + Math.ceil((gCd - Date.now()) / 1000) + 's, skip');
+      continue;
     }
-    return null;
+    var ctrl = new AbortController();
+    var timer = setTimeout(function() { ctrl.abort(); }, 20000);
+    try {
+      var res = await axios.post(
+        'https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + GEMINI_API_KEY,
+        {
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ parts: [{ text: text }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: calcMaxTokens(text) },
+        },
+        { headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal }
+      );
+      clearTimeout(timer);
+      var result = res.data.candidates[0].content.parts[0].text.trim();
+      if (isRepetitive(result)) { console.warn('[Translate] Gemini ' + gm + ' repetitive, skip'); continue; }
+      if (systemPrompt.includes('Korean') && !/[가-힯]/.test(result)) { console.warn('[Translate] Gemini ' + gm + ' no Korean, skip'); continue; }
+      if (systemPrompt.includes('Thai') && !/[฀-๿]/.test(result)) { console.warn('[Translate] Gemini ' + gm + ' no Thai, skip'); continue; }
+      console.log('[Translate] Gemini ok: ' + gm);
+      return result;
+    } catch (err) {
+      clearTimeout(timer);
+      if (err.response && err.response.status === 429) {
+        var msg = (err.response.data && err.response.data.error && err.response.data.error.message) || '';
+        var m = msg.match(/retry in ([\d.]+)s/i);
+        var waitSec = m ? parseFloat(m[1]) + 3 : 62;
+        geminiModelCooldown[gm] = Date.now() + waitSec * 1000;
+        console.warn('[Translate] Gemini ' + gm + ' 429 — cooldown ' + Math.ceil(waitSec) + 's');
+      } else {
+        console.warn('[Translate] Gemini ' + gm + ' err:', err.response ? err.response.status : err.message);
+      }
+    }
   }
+  return null;
 }
 
 // ── Groq LLMs (200K tokens/day free) ────────────────────────────────────────
