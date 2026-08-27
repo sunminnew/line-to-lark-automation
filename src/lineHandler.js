@@ -154,7 +154,7 @@ async function geminiTranslate(text, systemPrompt) {
       {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ parts: [{ text: text }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 3000 },
+        generationConfig: { temperature: 0.1, maxOutputTokens: calcMaxTokens(text) },
       },
       { headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal }
     );
@@ -186,6 +186,15 @@ var GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27
 var groqCooldown = {};
 
 // ── aiTranslate: Cache -> Gemini -> Groq-20b -> Groq-120b ───────────────────
+// Dynamic token budget: short msgs save TPM, long msgs get more
+function calcMaxTokens(text) {
+  var l = text.length;
+  if (l < 150) return 800;
+  if (l < 400) return 1500;
+  if (l < 800) return 2200;
+  return 3000;
+}
+
 async function aiTranslate(text, systemPrompt, fromLang, toLang) {
   var cacheKey = (fromLang || '') + '|' + (toLang || '') + '|' + text;
   var cached = getCached(cacheKey);
@@ -217,7 +226,7 @@ async function aiTranslate(text, systemPrompt, fromLang, toLang) {
     try {
       var res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
-        { model: model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }], temperature: 0.1, max_tokens: 3000 },
+        { model: model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }], temperature: 0.1, max_tokens: calcMaxTokens(text) },
         { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GROQ_API_KEY }, signal: aCtrl.signal }
       );
       var groqResult = res.data.choices[0].message.content.trim();
