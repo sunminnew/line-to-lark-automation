@@ -138,7 +138,7 @@ async function azureTranslate(text, fromLang, toLang) {
 }
 
 // ── Gemini (smart cooldown — reads retry-after from 429 response) ────────────
-var GEMINI_MODELS_LIST = ['gemini-3.6-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+var GEMINI_MODELS_LIST = ['gemini-3.6-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-8b'];
 var geminiModelCooldown = {};
 
 async function geminiTranslate(text, systemPrompt) {
