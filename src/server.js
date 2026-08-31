@@ -463,6 +463,13 @@ app.post('/webhook', async (req, res) => {
       continue;
     }
 
+    // Skip stale events — reply token already expired (LINE cold-start retry after redeploy)
+    const eventAge = Date.now() - (event.timestamp || 0);
+    if (eventAge > 55000) {
+      console.log(`[webhook] stale event skip — ${Math.round(eventAge / 1000)}s old, groupId=${sourceId.slice(0,8)}`);
+      continue;
+    }
+
     // Schedule translation only for regular messages (token not consumed by AI Urgent / summary)
     scheduleTranslation(sourceId, text, event.replyToken);
 
