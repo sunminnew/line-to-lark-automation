@@ -16,7 +16,7 @@ const {
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive } = require('./keepAlive');
-const { summarizeForLark } = require('./aiSummarizer');
+const { summarizeForLark } = require('./aiSummarizer');h
 const { sendToLarkGroup, sendSummaryCard, sendAlertCard } = require('./larkMessenger');
 const { recordActivity, addOffHoursMessage, consumeHolidayReminder } = require('./messageTracker');
 const { isQuestion, answerAIUrgent, analyzeForLark } = require('./smartAdvisor');
@@ -471,7 +471,7 @@ app.post('/webhook', async (req, res) => {
 
     // Skip stale events — reply token already expired (LINE cold-start retry after redeploy)
     const eventAge = Date.now() - (event.timestamp || 0);
-    if (eventAge > 55000) {
+    if (eventAge > 20000) {
       console.log(`[webhook] stale event skip — ${Math.round(eventAge / 1000)}s old, groupId=${sourceId.slice(0,8)}`);
       continue;
     }
