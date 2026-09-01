@@ -16,7 +16,7 @@ const {
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive } = require('./keepAlive');
-const { summarizeForLark } = require('./aiSummarizer');
+const { summarizeForLark } = require('./aiSummarizer');h
 const { sendToLarkGroup, sendSummaryCard, sendAlertCard } = require('./larkMessenger');
 const { recordActivity, addOffHoursMessage, consumeHolidayReminder } = require('./messageTracker');
 const { isQuestion, answerAIUrgent, analyzeForLark } = require('./smartAdvisor');
@@ -250,18 +250,20 @@ function withTimeout(promise, ms, label) {
 // ── Debouncer: batch rapid-fire messages (500ms window) ──────────────────────
 const msgBuf = new Map();
 const DEBOUNCE_MS = 500;
-function scheduleTranslation(sourceId, text, replyToken) {
-  if (!msgBuf.has(sourceId)) msgBuf.set(sourceId, { texts: [], token: null, timer: null });
+function scheduleTranslation(sourceId, text, replyToken, eventTimestamp) {
+  if (!msgBuf.has(sourceId)) msgBuf.set(sourceId, { texts: [], token: null, ts: null, timer: null });
   const buf = msgBuf.get(sourceId);
   buf.texts.push(text);
-  buf.token = replyToken;
+  buf.token = replyToken;  buf.ts = buf.ts || eventTimestamp;
   clearTimeout(buf.timer);
   buf.timer = setTimeout(async () => {
-    const { texts, token } = buf;
+    const { texts, token, ts } = buf;
     msgBuf.delete(sourceId);
     const combined = texts.join('\n');
+    const tokenBudget = 27000 - (Date.now() - ts);
+    if (tokenBudget < 3000) { console.log('[TR] token budget exhausted, skip'); return; }
     try {
-      const tr = await withTimeout(translateAll(combined), 75000, 'translateAll');
+      const tr = await withTimeout(translateAll(combined), Math.min(tokenBudget - 1000, 24000), 'translateAll');
       const replies = [];
       if (tr && tr.kr) replies.push(...toLineMessages('KR: ', tr.kr));
       if (tr && tr.th) replies.push(...toLineMessages('TH: ', tr.th));
@@ -477,7 +479,7 @@ app.post('/webhook', async (req, res) => {
     }
 
     // Schedule translation only for regular messages (token not consumed by AI Urgent / summary)
-    scheduleTranslation(sourceId, text, event.replyToken);
+    scheduleTranslation(sourceId, text, event.replyToken, event.timestamp);
 
     // ④ Off-hours buffer
     if (!inBizHours || !isWorking) addOffHoursMessage(sourceId, { timestamp, senderName, text });
