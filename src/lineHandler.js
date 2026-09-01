@@ -138,7 +138,7 @@ async function azureTranslate(text, fromLang, toLang) {
 }
 
 // ── Gemini (smart cooldown — reads retry-after from 429 response) ────────────
-var GEMINI_MODELS_LIST = ['gemini-3.6-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-8b'];
+var GEMINI_MODELS_LIST = ['gemini-3.6-flash', '];
 var geminiModelCooldown = {};
 
 async function geminiTranslate(text, systemPrompt) {
@@ -186,7 +186,7 @@ async function geminiTranslate(text, systemPrompt) {
 }
 
 // ── Groq LLMs (200K tokens/day free) ────────────────────────────────────────
-var GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'qwen/qwen3.6-27b'];
+var GROQ_MODELS = ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
 var groqCooldown = {};
 
 // ── aiTranslate: Cache -> Gemini -> Groq-20b -> Groq-120b ───────────────────
@@ -226,7 +226,7 @@ async function aiTranslate(text, systemPrompt, fromLang, toLang) {
       console.warn('[Translate] All Groq in cooldown'); break;
     }
     var aCtrl = new AbortController();
-    var aTimer = setTimeout(function() { aCtrl.abort(); }, 25000);
+    var aTimer = setTimeout(function() { aCtrl.abort(); }, 8000);
     try {
       var res = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
