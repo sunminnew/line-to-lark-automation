@@ -132,7 +132,7 @@ async function azureTranslate(text, fromLang, toLang) {
     console.log('[Translate] Azure ok (' + fromLang + '->' + toLang + ')');
     return result;
   } catch (err) {
-    console.warn('[Translate] Azure error:', err.response ? err.response.data : err.message);
+    console.warn('[Translate] Azure error:', err.response ? JSON.stringify(err.response.data) : err.message);
     return null;
   }
 }
