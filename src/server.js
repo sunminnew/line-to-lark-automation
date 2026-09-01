@@ -16,7 +16,7 @@ const {
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive } = require('./keepAlive');
-const { summarizeForLark } = require('./aiSummarizer');h
+const { summarizeForLark } = require('./aiSummarizer');
 const { sendToLarkGroup, sendSummaryCard, sendAlertCard } = require('./larkMessenger');
 const { recordActivity, addOffHoursMessage, consumeHolidayReminder } = require('./messageTracker');
 const { isQuestion, answerAIUrgent, analyzeForLark } = require('./smartAdvisor');
