@@ -141,7 +141,7 @@ async function azureTranslate(text, fromLang, toLang) {
 var GEMINI_MODELS_LIST = ['gemini-3.6-flash'];
 var geminiModelCooldown = {};
 
-async function geminiTranslate(text, systemPrompt) {
+async function geminiTranslate(text, systemPrompt, toLang) {
   if (!GEMINI_API_KEY) return null;
   for (var gi = 0; gi < GEMINI_MODELS_LIST.length; gi++) {
     var gm = GEMINI_MODELS_LIST[gi];
@@ -165,8 +165,8 @@ async function geminiTranslate(text, systemPrompt) {
       clearTimeout(timer);
       var result = res.data.candidates[0].content.parts[0].text.trim();
       if (isRepetitive(result)) { console.warn('[Translate] Gemini ' + gm + ' repetitive, skip'); continue; }
-      if (systemPrompt.includes('Korean') && !/[가-힯]/.test(result)) { console.warn('[Translate] Gemini ' + gm + ' no Korean, skip'); continue; }
-      if (systemPrompt.includes('Thai') && !/[฀-๿]/.test(result)) { console.warn('[Translate] Gemini ' + gm + ' no Thai, skip'); continue; }
+      if (toLang === 'ko' && !/[가-힯]/.test(result)) { console.warn('[Translate] Gemini ' + gm + ' no Korean, skip'); continue; }
+      if (toLang === 'th' && !/[฀-๿]/.test(result)) { console.warn('[Translate] Gemini ' + gm + ' no Thai, skip'); continue; }
       console.log('[Translate] Gemini ok: ' + gm);
       return result;
     } catch (err) {
@@ -186,7 +186,7 @@ async function geminiTranslate(text, systemPrompt) {
 }
 
 // ── Groq LLMs (200K tokens/day free) ────────────────────────────────────────
-var GROQ_MODELS = ['llama-3.3-70b-versatile', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
+var GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
 var groqCooldown = {};
 
 // ── aiTranslate: Cache -> Gemini -> Groq-20b -> Groq-120b ───────────────────
@@ -211,7 +211,7 @@ async function aiTranslate(text, systemPrompt, fromLang, toLang) {
 
   // 1. Gemini (smart cooldown)
   if (GEMINI_API_KEY) {
-    result = await geminiTranslate(text, systemPrompt);
+    result = await geminiTranslate(text, systemPrompt, toLang);
     if (result) { setCached(cacheKey, result); return result; }
     console.warn('[Translate] Gemini unavailable, trying Groq...');
   }
