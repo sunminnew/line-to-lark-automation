@@ -277,7 +277,7 @@ function scheduleTranslation(sourceId, text, replyToken) {
             { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` } }
           )
             .then(() => console.log('[LINE] Push ok →', sourceId))
-            .catch(e => console.error('[LINE] Push failed:', e.response?.data ?? e.message));
+            .catch(e => console.error('[LINE] Push failed:', JSON.stringify(e.response?.data) ?? e.message));
         });
       }
     } catch (e) { console.error('[TR] silent-fail:', e.message); }
@@ -460,6 +460,12 @@ app.post('/webhook', async (req, res) => {
           );
         }
       } catch (err) { console.error('[webhook] summary error:', err.message); }
+      continue;
+    }
+
+    // Skip LINE redeliveries — token already consumed on first delivery
+    if (event.deliveryContext?.isRedelivery) {
+      console.log(`[webhook] redelivery skip: ${event.webhookEventId?.slice(0,10) || 'unknown'}`);
       continue;
     }
 
