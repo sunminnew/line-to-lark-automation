@@ -4,9 +4,9 @@
  * and the keep-alive pinger (free Render plan -- prevents sleep).
  *
  * Features:
- *   - Thai to Korean translation 24/7 for every message in the group
+ *   - Thai<->Korean<->English translation 24/7 for every group message
  *   - Business hours 09:00-18:00 BKK: buffer messages for hourly Lark tasks
- *   - Outside hours: OOO reply appended after translation if any
+ *   - Outside hours: OOO reply appended after translation
  *   - Image messages: read payment slip with Gemini Vision -> record in PEAK Account
  */
 
@@ -18,7 +18,7 @@ const { isBusinessHours, getBangkokTime } = require('./timeRouter');
 const { addMessage }   = require('./messageStore');
 const {
   verifySignature,
-  translateToKorean,
+  translateAll,
   replyMessages,
   getSenderName,
   OOO_MESSAGE,
@@ -31,7 +31,6 @@ const { processSlipPayment }        = require('./peakHandler');
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
 
-// Raw body capture (required for LINE signature verification)
 app.use(
   express.json({
     verify: (req, _res, buf) => { req.rawBody = buf; },
@@ -54,7 +53,7 @@ app.post('/trigger', async (_req, res) => {
   res.json({ status: 'pipeline executed' });
 });
 
-// LINE push helper (used for slip confirmation)
+// LINE push helper
 async function pushText(to, text) {
   try {
     await axios.post(
@@ -67,9 +66,8 @@ async function pushText(to, text) {
   }
 }
 
-/** Format amount as Thai baht string: 5000 -> "\u0e3b5,000" */
 function formatBaht(amount) {
-  return '\u0e3b' + Number(amount).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return '\u0e3f' + Number(amount).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 // LINE Webhook
@@ -80,7 +78,6 @@ app.post('/webhook', async (req, res) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
-  // Respond 200 immediately; process events asynchronously.
   res.sendStatus(200);
 
   const events = req.body.events ?? [];
@@ -88,24 +85,18 @@ app.post('/webhook', async (req, res) => {
   for (const event of events) {
     if (event.type !== 'message') continue;
 
-    // Image message: payment slip flow
+    // Image: payment slip
     if (event.message?.type === 'image') {
-      // Only process images from group or room chats, never private 1-on-1
       if (event.source?.type === 'user') continue;
-
       const groupId   = event.source?.groupId ?? event.source?.roomId;
       const messageId = event.message.id;
       console.log(`[Slip] Image in ${event.source?.type} ${(groupId ?? '').slice(0, 10)}`);
-
-      // Async, never sends error/status to group (silent fail)
       (async () => {
         try {
           const slip = await readSlip(messageId);
           if (!slip.isValid) return;
-
           const peak = await processSlipPayment(slip.amount, slip.date);
           if (!peak.success) return;
-
           const amt = formatBaht(peak.amount);
           const msg = `\u0e44\u0e14\u0e49\u0e23\u0e31\u0e1a\u0e01\u0e32\u0e23\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19 ${amt} \u0e41\u0e25\u0e49\u0e27\u0e04\u0e48\u0e30 \u0e02\u0e2d\u0e1a\u0e04\u0e38\u0e13\u0e19\u0e30\u0e04\u0e48\u0e30!\n\uc785\uae08 \ud655\uc778\ub418\uc5c8\uc2b5\ub2c8\ub2e4 ${amt} \uac10\uc0ac\ud569\ub2c8\ub2e4!`;
           if (groupId) await pushText(groupId, msg);
@@ -113,47 +104,46 @@ app.post('/webhook', async (req, res) => {
           console.error('[Slip] Error:', err.message);
         }
       })();
-
       continue;
     }
 
-    // Text message: translation + Lark buffering
+    // Text: translation + Lark buffering
     if (event.message?.type !== 'text') continue;
 
     const replyToken = event.replyToken;
-    const text       = event.message.text?.trim();
+    const msgText    = event.message.text?.trim();
     const timestamp  = new Date(event.timestamp).toISOString();
 
-    if (!text) continue;
+    if (!msgText) continue;
 
-    // 1. Translate Thai to Korean (24/7)
-    const koreanText = await translateToKorean(text);
+    // Translate (bidirectional: TH->KR, KR->TH, EN->TH)
+    const result     = await translateAll(msgText);
     const inBizHours = isBusinessHours();
 
-    // 2. Build reply messages
     const replies = [];
-    if (koreanText) {
-      replies.push({ type: 'text', text: 'KR: ' + koreanText });
-      console.log('[Translate] TH->KR: "' + text.slice(0, 30) + '"');
+    if (result?.kr) {
+      replies.push({ type: 'text', text: 'KR: ' + result.kr });
+      console.log('[Translate] TH->KR: "' + msgText.slice(0, 30) + '"');
+    } else if (result?.th) {
+      replies.push({ type: 'text', text: result.th });
+      console.log('[Translate] ->TH: "' + msgText.slice(0, 30) + '"');
     }
     if (!inBizHours) {
       replies.push({ type: 'text', text: OOO_MESSAGE });
-      console.log('[Webhook] OOO appended.');
     }
     if (replies.length > 0) {
       await replyMessages(replyToken, replies);
     }
 
-    // 3. Buffer for Lark tasks during business hours
     if (inBizHours) {
       const senderName = await getSenderName(event);
-      addMessage({ timestamp, senderName, text });
-      console.log('[Webhook] Buffered from ' + senderName + ': "' + text.slice(0, 40) + '"');
+      addMessage({ timestamp, senderName, text: msgText });
+      console.log('[Webhook] Buffered from ' + senderName + ': "' + msgText.slice(0, 40) + '"');
     }
   }
 });
 
-// Setup webhook (one-time helper)
+// Setup webhook helper
 app.get('/setup-webhook', async (_req, res) => {
   try {
     const webhookUrl = 'https://line-to-lark-automation.onrender.com/webhook';
@@ -168,7 +158,6 @@ app.get('/setup-webhook', async (_req, res) => {
   }
 });
 
-// Start
 app.listen(PORT, () => {
   console.log('\n Server running on port ' + PORT);
   console.log('   Bangkok time : ' + getBangkokTime());
