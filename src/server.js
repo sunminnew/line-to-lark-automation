@@ -18,7 +18,6 @@ const {
 
 const app        = express();
 const PORT       = process.env.PORT ?? 3000;
-const LINE_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const WEBHOOK_URL = 'https://line-to-lark-automation.onrender.com/webhook';
 const DEBOUNCE_MS = 500;
 
@@ -75,7 +74,7 @@ function scheduleTranslation(sourceId, text, replyToken, eventTimestamp) {
           { to: sourceId, messages: replies.slice(0, 5) },
           { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
         )
-          .then(() => console.log('[LINE] Push ok →', sourceId.slice(0, 10)))
+          .then(() => console.log('[LINE] Push ok ->', sourceId.slice(0, 10)))
           .catch(e => console.error('[LINE] Push failed HTTP', e.response ? e.response.status : '?', ':', JSON.stringify(e.response ? e.response.data : e.message)));
       });
     } catch (e) { console.error('[TR] silent-fail:', e.message); }
