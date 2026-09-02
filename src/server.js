@@ -1,232 +1,178 @@
 /**
-* server.js
-* Express webhook server — LINE Thai↔Korean bidirectional translation.
-* Group/room chats only; 1-on-1 private chats are skipped silently.
-*/
+ * server.js
+ * Entry point. Bootstraps the Express webhook server, hourly cron job,
+ * and the keep-alive pinger (free Render plan -- prevents sleep).
+ *
+ * Features:
+ *   - Thai to Korean translation 24/7 for every message in the group
+ *   - Business hours 09:00-18:00 BKK: buffer messages for hourly Lark tasks
+ *   - Outside hours: OOO reply appended after translation if any
+ *   - Image messages: read payment slip with Gemini Vision -> record in PEAK Account
+ */
 
 require('dotenv').config();
 
 const express = require('express');
-const axios = require('axios');
+const axios   = require('axios');
 const { isBusinessHours, getBangkokTime } = require('./timeRouter');
+const { addMessage }   = require('./messageStore');
 const {
-verifySignature,
-translateAll,
-replyMessages,
-checkBotInfo,
+  verifySignature,
+  translateToKorean,
+  replyMessages,
+  getSenderName,
+  OOO_MESSAGE,
 } = require('./lineHandler');
-const { addMessage }                         = require('./messageStore');
-const { recordActivity, addOffHoursMessage } = require('./messageTracker');
+const { startCronJob, runPipeline } = require('./cronJob');
+const { startKeepAlive }            = require('./keepAlive');
+const { readSlip }                  = require('./slipReader');
+const { processSlipPayment }        = require('./peakHandler');
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT ?? 3000;
-const WEBHOOK_URL = 'https://line-to-lark-automation.onrender.com/webhook';
-const DEBOUNCE_MS = 500;
 
-// ── In-memory log capture ──────────────────────────────────────────────────────
-const LOG_LINES = [];
-const LOG_LISTENERS = new Set();
-const _log = console.log.bind(console);
-const _error = console.error.bind(console);
-const _warn = console.warn.bind(console);
-function _cap(level, args) {
-const line = `[${new Date().toISOString()}] ${level} ${args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')}`;
-LOG_LINES.push(line);
-if (LOG_LINES.length > 300) LOG_LINES.shift();
-LOG_LISTENERS.forEach(r => r.write(`data: ${JSON.stringify(line)}\n\n`));
-}
-console.log = (...a) => { _log(...a); _cap('LOG', a); };
-console.error = (...a) => { _error(...a); _cap('ERROR', a); };
-console.warn = (...a) => { _warn(...a); _cap('WARN', a); };
+// Raw body capture (required for LINE signature verification)
+app.use(
+  express.json({
+    verify: (req, _res, buf) => { req.rawBody = buf; },
+  })
+);
 
-// ── Body parsing ───────────────────────────────────────────────────────────────
-app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
-
-// ── Debounce state ─────────────────────────────────────────────────────────────
-const msgBuf = new Map();
-
-function scheduleTranslation(sourceId, text, replyToken, eventTimestamp) {
-if (!msgBuf.has(sourceId)) {
-msgBuf.set(sourceId, { texts: [], token: null, ts: null, timer: null });
-}
-const buf = msgBuf.get(sourceId);
-buf.texts.push(text);
-buf.token = replyToken;
-buf.ts = buf.ts || eventTimestamp;
-clearTimeout(buf.timer);
-buf.timer = setTimeout(async () => {
-const { texts, token, ts } = buf;
-msgBuf.delete(sourceId);
-const combined = texts.join('\n');
-const tokenBudget = 55000 - (Date.now() - ts);
-if (tokenBudget < 3000) { console.log('[TR] token budget exhausted, skip'); return; }
-try {
-const replyAge = Date.now() - ts;
-console.log(`[TR] reply attempt: age=${replyAge}ms tok=${token ? token.slice(0, 12) : 'NULL'}`);
-const tr = await translateAll(combined);
-const replies = [];
-if (tr && tr.kr) replies.push({ type: 'text', text: tr.kr });
-if (tr && tr.th) replies.push({ type: 'text', text: tr.th });
-if (!replies.length) { console.log('[TR] no translation output, skip'); return; }
-replyMessages(token, replies.slice(0, 5)).catch(async (replyErr) => {
-const status = replyErr.response ? replyErr.response.status : replyErr.message;
-console.log(`[LINE] Reply failed (${status}) — push fallback to ${sourceId.slice(0, 10)}`);
-await axios.post(
-'https://api.line.me/v2/bot/message/push',
-{ to: sourceId, messages: replies.slice(0, 5) },
-{ headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
-)
-.then(() => console.log('[LINE] Push ok ->', sourceId.slice(0, 10)))
-.catch(e => console.error('[LINE] Push failed HTTP', e.response ? e.response.status : '?', ':', JSON.stringify(e.response ? e.response.data : e.message)));
-});
-} catch (e) { console.error('[TR] silent-fail:', e.message); }
-}, DEBOUNCE_MS);
-}
-
-// ── Diagnostic endpoints ───────────────────────────────────────────────────────
-
+// Health check
 app.get('/', (_req, res) => {
-res.json({ status: 'ok', bangkokTime: getBangkokTime(), businessHours: isBusinessHours() });
+  res.json({
+    status: 'ok',
+    bangkokTime: getBangkokTime(),
+    businessHours: isBusinessHours(),
+  });
 });
 
-app.get('/logs', (_req, res) => {
-res.setHeader('Content-Type', 'text/html');
-res.send('<!DOCTYPE html><html><head><title>Logs</title><meta charset="utf-8">' +
-'<style>body{background:#111;color:#0f0;font-family:monospace;font-size:13px;padding:16px}' +
-'pre{white-space:pre-wrap;word-break:break-all}</style></head><body>' +
-'<h3>Last ' + LOG_LINES.length + ' log lines</h3>' +
-'<pre>' + LOG_LINES.map(l => l.replace(/</g, '&lt;')).join('\n') + '</pre>' +
-'<script>setTimeout(()=>location.reload(),8000)</script></body></html>');
-});
-
-app.get('/logs/stream', (req, res) => {
-res.setHeader('Content-Type', 'text/event-stream');
-res.setHeader('Cache-Control', 'no-cache');
-res.setHeader('Connection', 'keep-alive');
-res.setHeader('Access-Control-Allow-Origin', '*');
-res.flushHeaders();
-for (const lb of LOG_LINES) res.write(`data: ${JSON.stringify(lb)}\n\n`);
-LOG_LISTENERS.add(res);
-req.on('close', () => { LOG_LISTENERS.delete(res); });
-});
-
-app.get('/check-line', async (_req, res) => {
-try {
-const result = await checkBotInfo();
-res.json(result);
-} catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/check-webhook', async (_req, res) => {
-try {
-const r = await axios.get('https://api.line.me/v2/bot/channel/webhook/endpoint',
-{ headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } });
-res.json({ current: r.data, expected: WEBHOOK_URL, match: r.data.endpoint === WEBHOOK_URL });
-} catch (err) { res.status(500).json({ error: err.response ? err.response.data : err.message }); }
-});
-
-app.post('/setup-webhook', async (_req, res) => {
-try {
-const r = await axios.put(
-'https://api.line.me/v2/bot/channel/webhook/endpoint',
-{ webhookEndpointUrl: WEBHOOK_URL },
-{ headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
-);
-res.json({ set: WEBHOOK_URL, lineResponse: r.data });
-} catch (err) { res.status(500).json({ error: err.response ? err.response.data : err.message }); }
-});
-
-app.get('/quota', async (_req, res) => {
-try {
-const [q, c] = await Promise.all([
-axios.get('https://api.line.me/v2/bot/message/quota',
-{ headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }),
-axios.get('https://api.line.me/v2/bot/message/quota/consumption',
-{ headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }),
-]);
-res.json({ quota: q.data, consumption: c.data });
-} catch (err) { res.status(500).json({ error: err.response ? err.response.data : err.message }); }
-});
-
-app.post('/test-push', async (req, res) => {
-const { to, text } = req.body;
-if (!to) return res.status(400).json({ error: 'to required' });
-try {
-await axios.post(
-'https://api.line.me/v2/bot/message/push',
-{ to, messages: [{ type: 'text', text: text || 'ทดสอบ push' }] },
-{ headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
-);
-res.json({ ok: true, to });
-} catch (err) {
-res.status(500).json({ error: err.response ? err.response.data : err.message, status: err.response ? err.response.status : null });
-}
-});
-
+// Manual pipeline trigger
 app.post('/trigger', async (_req, res) => {
-try {
-const { runPipeline } = require('./cronJob');
-await runPipeline();
-res.json({ status: 'pipeline executed' });
-} catch (err) { res.json({ status: 'ok', note: err.message }); }
+  console.log('[Manual] Pipeline triggered via /trigger endpoint');
+  await runPipeline();
+  res.json({ status: 'pipeline executed' });
 });
 
-// ── LINE Webhook ───────────────────────────────────────────────────────────────
+// LINE push helper (used for slip confirmation)
+async function pushText(to, text) {
+  try {
+    await axios.post(
+      'https://api.line.me/v2/bot/message/push',
+      { to, messages: [{ type: 'text', text }] },
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
+    );
+  } catch (err) {
+    console.error('[Push] Failed:', err.response?.status ?? err.message);
+  }
+}
+
+/** Format amount as Thai baht string: 5000 -> "\u0e3b5,000" */
+function formatBaht(amount) {
+  return '\u0e3b' + Number(amount).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// LINE Webhook
 app.post('/webhook', async (req, res) => {
-const signature = req.headers['x-line-signature'];
-if (!signature || !verifySignature(req.rawBody, signature)) {
-return res.status(401).json({ error: 'Invalid signature' });
-}
-res.sendStatus(200);
+  const signature = req.headers['x-line-signature'];
+  if (!signature || !verifySignature(req.rawBody, signature)) {
+    console.warn('[Webhook] Invalid signature -- request rejected.');
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
 
-for (const event of (req.body.events ?? [])) {
-if (event.type !== 'message' || event.message?.type !== 'text') continue;
-// Skip 1-on-1 private chats
-if (event.source?.type === 'user') continue;
-const sourceId = event.source?.groupId ?? event.source?.roomId ?? 'unknown';
-const text = event.message.text?.trim();
-if (!text) continue;
-// Track message for stale-alert & Lark pipeline
-recordActivity(sourceId, 'LINE User', text);
-const _msgEntry = { timestamp: new Date(event.timestamp).toISOString(), senderName: 'LINE User', text, groupId: sourceId, groupName: sourceId };
-if (isBusinessHours()) { addMessage(_msgEntry); } else { addOffHoursMessage(sourceId, _msgEntry); }
-// Skip stale events (>20 s old)
-const eventAge = Date.now() - (event.timestamp || 0);
-if (eventAge > 20000) {
-console.log(`[webhook] stale skip ${Math.round(eventAge / 1000)}s src=${event.source?.type} id=${sourceId.slice(0, 8)}`);
-continue;
-}
-console.log(`[webhook] src=${event.source?.type} id=${sourceId.slice(0, 10)} age=${eventAge}ms tok=${event.replyToken ? event.replyToken.slice(0, 12) : 'NULL'}`);
-scheduleTranslation(sourceId, text, event.replyToken, event.timestamp);
-}
+  // Respond 200 immediately; process events asynchronously.
+  res.sendStatus(200);
+
+  const events = req.body.events ?? [];
+
+  for (const event of events) {
+    if (event.type !== 'message') continue;
+
+    // Image message: payment slip flow
+    if (event.message?.type === 'image') {
+      // Only process images from group or room chats, never private 1-on-1
+      if (event.source?.type === 'user') continue;
+
+      const groupId   = event.source?.groupId ?? event.source?.roomId;
+      const messageId = event.message.id;
+      console.log(`[Slip] Image in ${event.source?.type} ${(groupId ?? '').slice(0, 10)}`);
+
+      // Async, never sends error/status to group (silent fail)
+      (async () => {
+        try {
+          const slip = await readSlip(messageId);
+          if (!slip.isValid) return;
+
+          const peak = await processSlipPayment(slip.amount, slip.date);
+          if (!peak.success) return;
+
+          const amt = formatBaht(peak.amount);
+          const msg = `\u0e44\u0e14\u0e49\u0e23\u0e31\u0e1a\u0e01\u0e32\u0e23\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19 ${amt} \u0e41\u0e25\u0e49\u0e27\u0e04\u0e48\u0e30 \u0e02\u0e2d\u0e1a\u0e04\u0e38\u0e13\u0e19\u0e30\u0e04\u0e48\u0e30!\n\uc785\uae08 \ud655\uc778\ub418\uc5c8\uc2b5\ub2c8\ub2e4 ${amt} \uac10\uc0ac\ud569\ub2c8\ub2e4!`;
+          if (groupId) await pushText(groupId, msg);
+        } catch (err) {
+          console.error('[Slip] Error:', err.message);
+        }
+      })();
+
+      continue;
+    }
+
+    // Text message: translation + Lark buffering
+    if (event.message?.type !== 'text') continue;
+
+    const replyToken = event.replyToken;
+    const text       = event.message.text?.trim();
+    const timestamp  = new Date(event.timestamp).toISOString();
+
+    if (!text) continue;
+
+    // 1. Translate Thai to Korean (24/7)
+    const koreanText = await translateToKorean(text);
+    const inBizHours = isBusinessHours();
+
+    // 2. Build reply messages
+    const replies = [];
+    if (koreanText) {
+      replies.push({ type: 'text', text: 'KR: ' + koreanText });
+      console.log('[Translate] TH->KR: "' + text.slice(0, 30) + '"');
+    }
+    if (!inBizHours) {
+      replies.push({ type: 'text', text: OOO_MESSAGE });
+      console.log('[Webhook] OOO appended.');
+    }
+    if (replies.length > 0) {
+      await replyMessages(replyToken, replies);
+    }
+
+    // 3. Buffer for Lark tasks during business hours
+    if (inBizHours) {
+      const senderName = await getSenderName(event);
+      addMessage({ timestamp, senderName, text });
+      console.log('[Webhook] Buffered from ' + senderName + ': "' + text.slice(0, 40) + '"');
+    }
+  }
 });
 
-// ── LINE OAuth token auto-generation ──────────────────────────────────────────
-async function refreshLineToken() {
-const channelId = process.env.LINE_CHANNEL_ID;
-const channelSecret = process.env.LINE_CHANNEL_SECRET;
-if (!channelId || !channelSecret) return;
-try {
-const r = await axios.post(
-'https://api.line.me/v2/oauth/accessToken',
-`grant_type=client_credentials&client_id=${channelId}&client_secret=${channelSecret}`,
-{ headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-);
-process.env.LINE_CHANNEL_ACCESS_TOKEN = r.data.access_token;
-const expiresIn = r.data.expires_in || 2592000;
-console.log(`[LINE] OAuth token refreshed — expires in ${Math.round(expiresIn / 86400)}d`);
-setTimeout(refreshLineToken, Math.min(expiresIn * 0.9 * 1000, 2073600000));
-} catch (e) {
-console.error('[LINE] OAuth token refresh failed:', e.response ? JSON.stringify(e.response.data) : e.message);
-setTimeout(refreshLineToken, 5 * 60 * 1000);
-}
-}
+// Setup webhook (one-time helper)
+app.get('/setup-webhook', async (_req, res) => {
+  try {
+    const webhookUrl = 'https://line-to-lark-automation.onrender.com/webhook';
+    const r = await axios.put(
+      'https://api.line.me/v2/bot/channel/webhook/endpoint',
+      { webhookEndpointUrl: webhookUrl },
+      { headers: { Authorization: 'Bearer ' + process.env.LINE_CHANNEL_ACCESS_TOKEN } }
+    );
+    res.json({ set: webhookUrl, lineResponse: r.data });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data ?? err.message });
+  }
+});
 
-// ── Start ──────────────────────────────────────────────────────────────────────
-app.listen(PORT, async () => {
-console.log(`[start] Server on port ${PORT}`);
-console.log(`[start] Bangkok: ${getBangkokTime()}, BusinessHours: ${isBusinessHours()}`);
-await refreshLineToken();
-try { require('./cronJob').startCronJob(); console.log('[start] cronJob started'); } catch (e) { console.log('[start] cronJob skip:', e.message); }
-try { require('./keepAlive').startKeepAlive(); console.log('[start] keepAlive started'); } catch (e) { console.log('[start] keepAlive skip:', e.message); }
+// Start
+app.listen(PORT, () => {
+  console.log('\n Server running on port ' + PORT);
+  console.log('   Bangkok time : ' + getBangkokTime());
+  console.log('   Business hrs : ' + (isBusinessHours() ? 'YES' : 'NO'));
+  startCronJob();
+  startKeepAlive();
 });
