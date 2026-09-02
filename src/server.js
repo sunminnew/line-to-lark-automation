@@ -56,15 +56,15 @@ function scheduleTranslation(sourceId, text, replyToken, eventTimestamp) {
     const { texts, token, ts } = buf;
     msgBuf.delete(sourceId);
     const combined    = texts.join('\n');
-    const tokenBudget = 27000 - (Date.now() - ts);
+    const tokenBudget = 55000 - (Date.now() - ts);
     if (tokenBudget < 3000) { console.log('[TR] token budget exhausted, skip'); return; }
     try {
       const replyAge = Date.now() - ts;
       console.log(`[TR] reply attempt: age=${replyAge}ms tok=${token ? token.slice(0, 12) : 'NULL'}`);
       const tr = await translateAll(combined);
       const replies = [];
-      if (tr && tr.kr) replies.push({ type: 'text', text: 'KR: ' + tr.kr });
-      if (tr && tr.th) replies.push({ type: 'text', text: 'TH: ' + tr.th });
+      if (tr && tr.kr) replies.push({ type: 'text', text: tr.kr });
+      if (tr && tr.th) replies.push({ type: 'text', text: tr.th });
       if (!replies.length) { console.log('[TR] no translation output, skip'); return; }
       replyMessages(token, replies.slice(0, 5)).catch(async (replyErr) => {
         const status = replyErr.response ? replyErr.response.status : replyErr.message;
@@ -196,8 +196,6 @@ app.post('/webhook', async (req, res) => {
 });
 
 // ── LINE OAuth token auto-generation ──────────────────────────────────────────
-// If LINE_CHANNEL_ID is set, generate a fresh channel access token automatically.
-// This avoids the need to manually copy long-lived tokens from the Developer Console.
 async function refreshLineToken() {
   const channelId     = process.env.LINE_CHANNEL_ID;
   const channelSecret = process.env.LINE_CHANNEL_SECRET;
@@ -209,13 +207,11 @@ async function refreshLineToken() {
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
     process.env.LINE_CHANNEL_ACCESS_TOKEN = r.data.access_token;
-    const expiresIn = r.data.expires_in || 2592000; // default 30 days
+    const expiresIn = r.data.expires_in || 2592000;
     console.log(`[LINE] OAuth token refreshed — expires in ${Math.round(expiresIn / 86400)}d`);
-    // Auto-refresh at 90% of lifetime
-    setTimeout(refreshLineToken, expiresIn * 0.9 * 1000);
+    setTimeout(refreshLineToken, Math.min(expiresIn * 0.9 * 1000, 2073600000));
   } catch (e) {
     console.error('[LINE] OAuth token refresh failed:', e.response ? JSON.stringify(e.response.data) : e.message);
-    // Retry in 5 minutes
     setTimeout(refreshLineToken, 5 * 60 * 1000);
   }
 }
@@ -224,7 +220,7 @@ async function refreshLineToken() {
 app.listen(PORT, async () => {
   console.log(`[start] Server on port ${PORT}`);
   console.log(`[start] Bangkok: ${getBangkokTime()}, BusinessHours: ${isBusinessHours()}`);
-  await refreshLineToken(); // generate Wisdom Consulting token before anything else
+  await refreshLineToken();
   try { require('./cronJob').startCronJob(); console.log('[start] cronJob started'); } catch (e) { console.log('[start] cronJob skip:', e.message); }
   try { require('./keepAlive').startKeepAlive(); console.log('[start] keepAlive started'); } catch (e) { console.log('[start] keepAlive skip:', e.message); }
 });
