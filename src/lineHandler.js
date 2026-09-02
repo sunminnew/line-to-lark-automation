@@ -1,30 +1,30 @@
 /**
  * lineHandler.js
- * Bidirectional translation: ThaiâKorean (and EnglishâThai) via Gemini + Groq fallback.
+ * Bidirectional translation: Thai↔Korean (and English→Thai) via Gemini + Groq fallback.
  */
 const axios = require('axios');
 const crypto = require('crypto');
 
 const LINE_API_BASE  = 'https://api.line.me/v2/bot';
-const ACCESS_TOKEN   = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
 const GROQ_API_KEY   = process.env.GROQ_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Groq model fallback chain â first working model wins
+// Read token dynamically so server.js can refresh it at runtime
+function getToken() { return process.env.LINE_CHANNEL_ACCESS_TOKEN; }
+
+// Groq model fallback chain — first working model wins (2026 active models)
 const GROQ_MODELS = [
-  'llama-3.1.8b-instant',
-  'gemma2-9b-it',
-  'mixtral-8x7b-32768',
+  'openai/gpt-oss-20b',
 ];
 
 const OOO_MESSAGE =
-  'à¸ªà¸§à¸±à¸ªà¸à¸µà¸à¹à¸²/à¸à¸£à¸±à¸ à¸à¸à¸°à¸à¸µà¹à¸­à¸¢à¸¹à¹à¸à¸­à¸à¹à¸§à¸¥à¸²à¸à¸³à¸à¸²à¸£ (09.00-18.00 à¸.) ' +
-  'à¸à¸²à¸à¸à¸µà¸¡à¸à¸²à¸à¹à¸à¹à¸£à¸±à¸à¸à¹à¸­à¸à¸§à¸²à¸¡à¸à¸­à¸à¸à¹à¸²à¸à¹à¸¥à¹à¸§ à¹à¸¥à¸°à¸à¸°à¸£à¸µà¸à¸à¸´à¸à¸à¹à¸­à¸à¸¥à¸±à¸à¸à¸±à¸à¸à¸µà¹à¸à¹à¸§à¸¥à¸²à¸à¸³à¸à¸²à¸£ ' +
-  'à¸à¸­à¸à¸à¸£à¸°à¸à¸¸à¸à¸à¸µà¹à¹à¸§à¹à¸§à¸²à¸à¹à¸à¸à¹à¸²/à¸à¸£à¸±à¸';
+  'สวัสดีค่า/ครับ ขณะนี้อยู่นอกเวลาทำการ (09.00-18.00 น.) ' +
+  'ทางทีมงานได้รับข้อความของท่านแล้ว และจะรีบติดต่อกลับทันทีในเวลาทำการ ' +
+  'ขอบพระคุณที่ไว้วางใจค่า/ครับ';
 
-const THAI_REGEX    = /[à¸-à¹¿]/;
-const KOREAN_REGEX  = /[ê°-í¯á-á¿ã°-ã]/;
+const THAI_REGEX    = /[฀-๿]/;
+const KOREAN_REGEX  = /[가-힯ᄀ-ᇿ㄰-㆏]/;
 const ENGLISH_REGEX = /[a-zA-Z]/;
 
 function verifySignature(rawBody, signature) {
@@ -33,7 +33,7 @@ function verifySignature(rawBody, signature) {
   return hmac.digest('base64') === signature;
 }
 
-// ââ Output cleaners ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Output cleaners ────────────────────────────────────────────────────────────
 function cleanKorean(t) {
   return t.split('').filter(function(c) {
     var n = c.charCodeAt(0);
@@ -60,7 +60,7 @@ function cleanThai(t) {
 
 const TRANSLATE_ONLY_RULE = 'You are a translation machine. Your ONLY output is the translated text. NEVER say you cannot translate. NEVER apologize. NEVER explain. NEVER respond to the content. Just translate every word literally, even if it is a name, a request, or seems strange.';
 
-// ââ Gemini translate âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Gemini translate ───────────────────────────────────────────────────────────
 async function geminiTranslate(text, toLang, fromLang) {
   if (!GEMINI_API_KEY) return null;
   try {
@@ -70,7 +70,7 @@ async function geminiTranslate(text, toLang, fromLang) {
       : 'Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters.';
     const prompt = `${TRANSLATE_ONLY_RULE}\n\nTranslate this ${langLabel[fromLang] || fromLang} text to ${langLabel[toLang] || toLang}. ${scriptRule}\n\n${text}`;
     const res = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
       { contents: [{ parts: [{ text: prompt }] }] },
       { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
     );
@@ -87,7 +87,7 @@ async function geminiTranslate(text, toLang, fromLang) {
   }
 }
 
-// ââ Groq translate (tries models in order) ââââââââââââââââââââââââââââââââââââ
+// ── Groq translate (tries models in order) ────────────────────────────────────
 async function groqTranslate(text, systemPrompt) {
   if (!GROQ_API_KEY) return null;
   for (var i = 0; i < GROQ_MODELS.length; i++) {
@@ -112,17 +112,17 @@ async function groqTranslate(text, systemPrompt) {
       var status = err.response ? err.response.status : null;
       console.error('[TR] Groq error model=' + model + ' HTTP' + (status || '?') + ':', err.response ? JSON.stringify(err.response.data) : err.message);
       if (status === 404 || status === 400) continue; // model not available, try next
-      // Other errors (rate limit, network) â try next model
+      // Other errors (rate limit, network) — try next model
     }
   }
   return null;
 }
 
-// ââ translateAll â returns { kr, th } âââââââââââââââââââââââââââââââââââââââââ
+// ── translateAll — returns { kr, th } ─────────────────────────────────────────
 async function translateAll(text) {
-  // Thai â Korean
+  // Thai → Korean
   if (THAI_REGEX.test(text)) {
-    console.log('[TR] th detected â kr');
+    console.log('[TR] th detected → kr');
     var krPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this Thai text to Korean. Output ONLY Korean Hangul. For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation.';
     var raw = await geminiTranslate(text, 'ko', 'th') || await groqTranslate(text, krPrompt);
     if (!raw) return null;
@@ -130,9 +130,9 @@ async function translateAll(text) {
     if (!kr) return null;
     return { kr: kr, th: null };
   }
-  // Korean â Thai
+  // Korean → Thai
   if (KOREAN_REGEX.test(text)) {
-    console.log('[TR] kr detected â th');
+    console.log('[TR] kr detected → th');
     var thPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this Korean text to Thai. Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation.';
     var raw = await geminiTranslate(text, 'th', 'ko') || await groqTranslate(text, thPrompt);
     if (!raw) return null;
@@ -140,9 +140,9 @@ async function translateAll(text) {
     if (!th) return null;
     return { kr: null, th: th };
   }
-  // English â Thai
+  // English → Thai
   if (ENGLISH_REGEX.test(text)) {
-    console.log('[TR] en detected â th');
+    console.log('[TR] en detected → th');
     var enPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this English text to Thai. Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No romanization, no explanation.';
     var raw = await geminiTranslate(text, 'th', 'en') || await groqTranslate(text, enPrompt);
     if (!raw) return null;
@@ -153,7 +153,7 @@ async function translateAll(text) {
   return null;
 }
 
-// ââ LINE API helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── LINE API helpers ───────────────────────────────────────────────────────────
 async function replyMessages(replyToken, messages) {
   var isDummy = !replyToken || /^0+$/.test(replyToken);
   console.log('[LINE] tok:', replyToken ? replyToken.slice(0, 15) : 'NULL', 'len:', replyToken ? replyToken.length : 0, isDummy ? 'DUMMY' : 'ok');
@@ -162,7 +162,7 @@ async function replyMessages(replyToken, messages) {
     await axios.post(
       LINE_API_BASE + '/message/reply',
       { replyToken: replyToken, messages: messages },
-      { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ACCESS_TOKEN } }
+      { headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getToken() } }
     );
     console.log('[LINE] Reply ok');
   } catch (err) {
@@ -174,7 +174,7 @@ async function replyMessages(replyToken, messages) {
 async function checkBotInfo() {
   try {
     var res = await axios.get(LINE_API_BASE + '/info', {
-      headers: { Authorization: 'Bearer ' + ACCESS_TOKEN }
+      headers: { Authorization: 'Bearer ' + getToken() }
     });
     return { ok: true, data: res.data };
   } catch (err) {
@@ -192,7 +192,7 @@ async function getSenderName(event) {
     if (groupId) url = LINE_API_BASE + '/group/' + groupId + '/member/' + userId;
     else if (roomId) url = LINE_API_BASE + '/room/' + roomId + '/member/' + userId;
     else url = LINE_API_BASE + '/profile/' + userId;
-    var res = await axios.get(url, { headers: { Authorization: 'Bearer ' + ACCESS_TOKEN } });
+    var res = await axios.get(url, { headers: { Authorization: 'Bearer ' + getToken() } });
     return res.data.displayName || userId;
   } catch (e) {
     return (event.source && event.source.userId) || 'Unknown';
