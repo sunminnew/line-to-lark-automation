@@ -1,6 +1,6 @@
 /**
  * server.js
- * Express webhook server â LINE ThaiâKorean bidirectional translation.
+ * Express webhook server — LINE Thai↔Korean bidirectional translation.
  * Group/room chats only; 1-on-1 private chats are skipped silently.
  */
 
@@ -22,7 +22,7 @@ const LINE_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const WEBHOOK_URL = 'https://line-to-lark-automation.onrender.com/webhook';
 const DEBOUNCE_MS = 500;
 
-// ââ In-memory log capture ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── In-memory log capture ──────────────────────────────────────────────────────
 const LOG_LINES     = [];
 const LOG_LISTENERS = new Set();
 const _log   = console.log.bind(console);
@@ -38,10 +38,10 @@ console.log   = (...a) => { _log(...a);   _cap('LOG',   a); };
 console.error = (...a) => { _error(...a); _cap('ERROR', a); };
 console.warn  = (...a) => { _warn(...a);  _cap('WARN',  a); };
 
-// ââ Body parsing âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Body parsing ───────────────────────────────────────────────────────────────
 app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
-// ââ Debounce state âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Debounce state ─────────────────────────────────────────────────────────────
 const msgBuf = new Map();
 
 function scheduleTranslation(sourceId, text, replyToken, eventTimestamp) {
@@ -69,20 +69,20 @@ function scheduleTranslation(sourceId, text, replyToken, eventTimestamp) {
       if (!replies.length) { console.log('[TR] no translation output, skip'); return; }
       replyMessages(token, replies.slice(0, 5)).catch(async (replyErr) => {
         const status = replyErr.response ? replyErr.response.status : replyErr.message;
-        console.log(`[LINE] Reply failed (${status}) â push fallback to ${sourceId.slice(0, 10)}`);
+        console.log(`[LINE] Reply failed (${status}) — push fallback to ${sourceId.slice(0, 10)}`);
         await axios.post(
           'https://api.line.me/v2/bot/message/push',
           { to: sourceId, messages: replies.slice(0, 5) },
-          { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` } }
+          { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
         )
-          .then(() => console.log('[LINE] Push ok â', sourceId.slice(0, 10)))
+          .then(() => console.log('[LINE] Push ok →', sourceId.slice(0, 10)))
           .catch(e => console.error('[LINE] Push failed HTTP', e.response ? e.response.status : '?', ':', JSON.stringify(e.response ? e.response.data : e.message)));
       });
     } catch (e) { console.error('[TR] silent-fail:', e.message); }
   }, DEBOUNCE_MS);
 }
 
-// ââ Diagnostic endpoints âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── Diagnostic endpoints ───────────────────────────────────────────────────────
 
 app.get('/', (_req, res) => {
   res.json({ status: 'ok', bangkokTime: getBangkokTime(), businessHours: isBusinessHours() });
@@ -119,7 +119,7 @@ app.get('/check-line', async (_req, res) => {
 app.get('/check-webhook', async (_req, res) => {
   try {
     const r = await axios.get('https://api.line.me/v2/bot/channel/webhook/endpoint',
-      { headers: { Authorization: `Bearer ${LINE_TOKEN}` } });
+      { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } });
     res.json({ current: r.data, expected: WEBHOOK_URL, match: r.data.endpoint === WEBHOOK_URL });
   } catch (err) { res.status(500).json({ error: err.response ? err.response.data : err.message }); }
 });
@@ -129,7 +129,7 @@ app.post('/setup-webhook', async (_req, res) => {
     const r = await axios.put(
       'https://api.line.me/v2/bot/channel/webhook/endpoint',
       { webhookEndpointUrl: WEBHOOK_URL },
-      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` } }
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
     );
     res.json({ set: WEBHOOK_URL, lineResponse: r.data });
   } catch (err) { res.status(500).json({ error: err.response ? err.response.data : err.message }); }
@@ -139,9 +139,9 @@ app.get('/quota', async (_req, res) => {
   try {
     const [q, c] = await Promise.all([
       axios.get('https://api.line.me/v2/bot/message/quota',
-        { headers: { Authorization: `Bearer ${LINE_TOKEN}` } }),
+        { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }),
       axios.get('https://api.line.me/v2/bot/message/quota/consumption',
-        { headers: { Authorization: `Bearer ${LINE_TOKEN}` } }),
+        { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }),
     ]);
     res.json({ quota: q.data, consumption: c.data });
   } catch (err) { res.status(500).json({ error: err.response ? err.response.data : err.message }); }
@@ -153,8 +153,8 @@ app.post('/test-push', async (req, res) => {
   try {
     await axios.post(
       'https://api.line.me/v2/bot/message/push',
-      { to, messages: [{ type: 'text', text: text || 'à¸à¸à¸ªà¸­à¸ push' }] },
-      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LINE_TOKEN}` } }
+      { to, messages: [{ type: 'text', text: text || 'ทดสอบ push' }] },
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
     );
     res.json({ ok: true, to });
   } catch (err) {
@@ -170,7 +170,7 @@ app.post('/trigger', async (_req, res) => {
   } catch (err) { res.json({ status: 'ok', note: err.message }); }
 });
 
-// ââ LINE Webhook âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ── LINE Webhook ───────────────────────────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
   const signature = req.headers['x-line-signature'];
   if (!signature || !verifySignature(req.rawBody, signature)) {
@@ -196,10 +196,36 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// ââ Start ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-app.listen(PORT, () => {
+// ── LINE OAuth token auto-generation ──────────────────────────────────────────
+// If LINE_CHANNEL_ID is set, generate a fresh channel access token automatically.
+// This avoids the need to manually copy long-lived tokens from the Developer Console.
+async function refreshLineToken() {
+  const channelId     = process.env.LINE_CHANNEL_ID;
+  const channelSecret = process.env.LINE_CHANNEL_SECRET;
+  if (!channelId || !channelSecret) return;
+  try {
+    const r = await axios.post(
+      'https://api.line.me/v2/oauth/accessToken',
+      `grant_type=client_credentials&client_id=${channelId}&client_secret=${channelSecret}`,
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = r.data.access_token;
+    const expiresIn = r.data.expires_in || 2592000; // default 30 days
+    console.log(`[LINE] OAuth token refreshed — expires in ${Math.round(expiresIn / 86400)}d`);
+    // Auto-refresh at 90% of lifetime
+    setTimeout(refreshLineToken, expiresIn * 0.9 * 1000);
+  } catch (e) {
+    console.error('[LINE] OAuth token refresh failed:', e.response ? JSON.stringify(e.response.data) : e.message);
+    // Retry in 5 minutes
+    setTimeout(refreshLineToken, 5 * 60 * 1000);
+  }
+}
+
+// ── Start ──────────────────────────────────────────────────────────────────────
+app.listen(PORT, async () => {
   console.log(`[start] Server on port ${PORT}`);
   console.log(`[start] Bangkok: ${getBangkokTime()}, BusinessHours: ${isBusinessHours()}`);
+  await refreshLineToken(); // generate Wisdom Consulting token before anything else
   try { require('./cronJob').startCronJob(); console.log('[start] cronJob started'); } catch (e) { console.log('[start] cronJob skip:', e.message); }
   try { require('./keepAlive').startKeepAlive(); console.log('[start] keepAlive started'); } catch (e) { console.log('[start] keepAlive skip:', e.message); }
 });
