@@ -8,6 +8,7 @@
  *   - Business hours 09:00-18:00 BKK: buffer messages for hourly Lark tasks
  *   - Outside hours: OOO reply appended after translation
  *   - Image messages: read payment slip with Gemini Vision -> record in PEAK Account
+ *   - /status endpoint: real-time monitoring dashboard feed
  */
 
 require('dotenv').config();
@@ -31,6 +32,25 @@ const { processSlipPayment }        = require('./peakHandler');
 const app  = express();
 const PORT = process.env.PORT ?? 3000;
 
+// -- In-memory stats ----------------------------------------------------------
+const stats = {
+  startTime: Date.now(),
+  translate: { thKr: 0, toTh: 0, fail: 0, lastAt: null },
+  slips:     { detected: 0, valid: 0, paid: 0, lastAt: null },
+  ooo:       0,
+  events:    [],   // raw ms timestamps, last 60 min (for minutely chart)
+  recent:    [],   // last 30 events for activity feed
+};
+
+function recordEvent(type, preview) {
+  const now = Date.now();
+  const cutoff = now - 3_600_000;
+  stats.events = stats.events.filter(t => t >= cutoff);
+  stats.events.push(now);
+  stats.recent.unshift({ t: now, type, preview: String(preview || '').slice(0, 50) });
+  if (stats.recent.length > 30) stats.recent.pop();
+}
+
 app.use(
   express.json({
     verify: (req, _res, buf) => { req.rawBody = buf; },
@@ -53,6 +73,36 @@ app.post('/trigger', async (_req, res) => {
   res.json({ status: 'pipeline executed' });
 });
 
+// -- Status / monitoring endpoint ---------------------------------------------
+app.get('/status', (_req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  const now = Date.now();
+  // Minutely counts for last 30 minutes (oldest->newest)
+  const minutely = [];
+  for (let i = 29; i >= 0; i--) {
+    const s = now - (i + 1) * 60_000;
+    const e = now - i * 60_000;
+    minutely.push(stats.events.filter(t => t >= s && t < e).length);
+  }
+  res.json({
+    alive: true,
+    uptimeSec: Math.floor((now - stats.startTime) / 1000),
+    bangkokTime: getBangkokTime(),
+    businessHours: isBusinessHours(),
+    translate: {
+      ...stats.translate,
+      secsSinceLast: stats.translate.lastAt
+        ? Math.floor((now - stats.translate.lastAt) / 1000)
+        : null,
+    },
+    slips: stats.slips,
+    ooo: stats.ooo,
+    minutely,
+    recent: stats.recent.slice(0, 20),
+  });
+});
+
 // LINE push helper
 async function pushText(to, text) {
   try {
@@ -67,7 +117,7 @@ async function pushText(to, text) {
 }
 
 function formatBaht(amount) {
-  return '\u0e3f' + Number(amount).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return '฿' + Number(amount).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 // LINE Webhook
@@ -91,14 +141,21 @@ app.post('/webhook', async (req, res) => {
       const groupId   = event.source?.groupId ?? event.source?.roomId;
       const messageId = event.message.id;
       console.log(`[Slip] Image in ${event.source?.type} ${(groupId ?? '').slice(0, 10)}`);
+      stats.slips.detected++;
+      recordEvent('slip_detected', 'รูป slip');
       (async () => {
         try {
           const slip = await readSlip(messageId);
           if (!slip.isValid) return;
+          stats.slips.valid++;
+          recordEvent('slip_valid', formatBaht(slip.amount));
           const peak = await processSlipPayment(slip.amount, slip.date);
           if (!peak.success) return;
+          stats.slips.paid++;
+          stats.slips.lastAt = Date.now();
           const amt = formatBaht(peak.amount);
-          const msg = `\u0e44\u0e14\u0e49\u0e23\u0e31\u0e1a\u0e01\u0e32\u0e23\u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19 ${amt} \u0e41\u0e25\u0e49\u0e27\u0e04\u0e48\u0e30 \u0e02\u0e2d\u0e1a\u0e04\u0e38\u0e13\u0e19\u0e30\u0e04\u0e48\u0e30!\n\uc785\uae08 \ud655\uc778\ub418\uc5c8\uc2b5\ub2c8\ub2e4 ${amt} \uac10\uc0ac\ud569\ub2c8\ub2e4!`;
+          recordEvent('slip_paid', amt);
+          const msg = `ได้รับการชำระเงิน ${amt} แล้วค่ะ ขอบคุณนะค่ะ!\n입금 확인되었습니다 ${amt} 감사합니다!`;
           if (groupId) await pushText(groupId, msg);
         } catch (err) {
           console.error('[Slip] Error:', err.message);
@@ -109,6 +166,8 @@ app.post('/webhook', async (req, res) => {
 
     // Text: translation + Lark buffering
     if (event.message?.type !== 'text') continue;
+    // Skip private (1-on-1) chats
+    if (event.source?.type === 'user') continue;
 
     const replyToken = event.replyToken;
     const msgText    = event.message.text?.trim();
@@ -123,13 +182,23 @@ app.post('/webhook', async (req, res) => {
     const replies = [];
     if (result?.kr) {
       replies.push({ type: 'text', text: 'KR: ' + result.kr });
+      stats.translate.thKr++;
+      stats.translate.lastAt = Date.now();
+      recordEvent('th_kr', msgText.slice(0, 40));
       console.log('[Translate] TH->KR: "' + msgText.slice(0, 30) + '"');
     } else if (result?.th) {
       replies.push({ type: 'text', text: result.th });
+      stats.translate.toTh++;
+      stats.translate.lastAt = Date.now();
+      recordEvent('to_th', msgText.slice(0, 40));
       console.log('[Translate] ->TH: "' + msgText.slice(0, 30) + '"');
+    } else {
+      stats.translate.fail++;
+      recordEvent('no_trans', msgText.slice(0, 30));
     }
     if (!inBizHours) {
       replies.push({ type: 'text', text: OOO_MESSAGE });
+      stats.ooo++;
     }
     if (replies.length > 0) {
       await replyMessages(replyToken, replies);
