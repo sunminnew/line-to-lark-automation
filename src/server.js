@@ -26,6 +26,7 @@ const {
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive }            = require('./keepAlive');
+const { addGroup }                       = require('./groupStore');
 const { readSlip }                  = require('./slipReader');
 const { processSlipPayment }        = require('./peakHandler');
 
@@ -133,7 +134,9 @@ app.post('/webhook', async (req, res) => {
   const events = req.body.events ?? [];
 
   for (const event of events) {
-    if (event.type !== 'message') continue;
+    // Register group automatically    if (event.source?.groupId) addGroup(event.source.groupId);
+        if (event.source?.roomId)  addGroup(event.source.roomId);
+        if (event.type !== 'message') continue;
 
     // Image: payment slip
     if (event.message?.type === 'image') {
