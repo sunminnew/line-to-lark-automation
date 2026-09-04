@@ -12,6 +12,7 @@ const { isBusinessHours, getBangkokTime } = require('./timeRouter');
 const { flushMessages }     = require('./messageStore');
 const { summarizeMessages } = require('./aiSummarizer');
 const { createTasksInLark } = require('./larkIntegration');
+const { getAllGroups }      = require('./groupStore');
 
 const LINE_API = 'https://api.line.me/v2/bot';
 const TOKEN    = () => process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -51,8 +52,7 @@ const MONDAY_TEXTS = [
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 function getGroupIds() {
-  return (process.env.LINE_GROUP_IDS ?? '')
-    .split(',').map(s => s.trim()).filter(Boolean);
+    return getAllGroups();
 }
 
 async function pushToGroup(groupId, messages) {
