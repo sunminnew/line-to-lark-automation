@@ -204,8 +204,17 @@ app.post('/webhook', async (req, res) => {
         replies.push({ type: 'text', text: OOO_MESSAGE });
         stats.ooo++;
       }
+      const groupId = event.source?.groupId ?? event.source?.roomId;
       if (replies.length > 0) {
-        await replyMessages(replyToken, replies);
+        try {
+          await replyMessages(replyToken, replies);
+        } catch {
+          // Reply token invalid/expired → push fallback
+          if (groupId) {
+            console.log('[Webhook] Reply failed → push fallback to ' + groupId.slice(0, 10));
+            await pushText(groupId, replies.map(m => m.text).join('\n'));
+          }
+        }
       }
 
       if (inBizHours) {
