@@ -1,25 +1,51 @@
 /**
  * cronJob.js
  * Scheduled jobs for the LINE<>Lark automation.
- *   - Hourly pipeline  : every hour during Bangkok business hours
- *   - Monday greeting  : 09:00 Monday BKK  (random image + message)
- *   - Friday greeting  : 17:50 Friday BKK  (random image + message + weather)
+ * - Hourly pipeline  : every hour during Bangkok business hours
+ * - Monday greeting  : 09:00 Monday BKK (random image + message)
+ * - Friday greeting  : 17:50 Friday BKK (random image + message + weather)
+ * - Holiday reminder : 17:00 daily -- pushes to LINE if tomorrow is a Thai holiday
  */
 
 const cron  = require('node-cron');
 const axios = require('axios');
 const { isBusinessHours, getBangkokTime } = require('./timeRouter');
-const { flushMessages }     = require('./messageStore');
-const { summarizeMessages } = require('./aiSummarizer');
-const { createTasksInLark } = require('./larkIntegration');
-const { getAllGroups }      = require('./groupStore');
+const { flushMessages }                   = require('./messageStore');
+const { summarizeMessages }               = require('./aiSummarizer');
+const { createTasksInLark }               = require('./larkIntegration');
+const { getAllGroups }                     = require('./groupStore');
 
-const LINE_API = 'https://api.line.me/v2/bot';
-const TOKEN    = () => process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const REPO_RAW = 'https://raw.githubusercontent.com/sunminnew/line-to-lark-automation/main/assets/';
+const LINE_API  = 'https://api.line.me/v2/bot';
+const TOKEN     = () => process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const REPO_RAW  = 'https://raw.githubusercontent.com/sunminnew/line-to-lark-automation/main/assets/';
+
+// ── Thai public holidays (YYYY-MM-DD, Bangkok time) ───────────────────────────
+const THAI_HOLIDAYS = {
+  '2026-08-12': 'วันแม่แห่งชาติ',
+  '2026-10-13': 'วันคล้ายวันสวรรคต ร.9',
+  '2026-10-23': 'วันปิยมหาราช',
+  '2026-12-05': 'วันชาติ',
+  '2026-12-10': 'วันรัฐธรรมนูญ',
+  '2026-12-31': 'วันสิ้นปี',
+  '2027-01-01': 'วันปีใหม่',
+  '2027-02-15': 'วันมาฆบูชา',
+  '2027-04-06': 'วันจักรี',
+  '2027-04-13': 'วันสงกรานต์',
+  '2027-04-14': 'วันสงกรานต์',
+  '2027-04-15': 'วันสงกรานต์',
+  '2027-05-04': 'วันฉัตรมงคล',
+  '2027-05-11': 'วันวิสาขบูชา',
+  '2027-06-03': 'วันเฉลิมพระชนมพรรษาสมเด็จพระราชินี',
+  '2027-07-28': 'วันเฉลิมพระชนมพรรษา ร.10',
+  '2027-08-12': 'วันแม่แห่งชาติ',
+  '2027-10-13': 'วันคล้ายวันสวรรคต ร.9',
+  '2027-10-23': 'วันปิยมหาราช',
+  '2027-12-05': 'วันชาติ',
+  '2027-12-10': 'วันรัฐธรรมนูญ',
+  '2027-12-31': 'วันสิ้นปี',
+};
 
 // ── image pools ───────────────────────────────────────────────────────────────
-
 const FRIDAY_IMAGES = [
   REPO_RAW + 'friday-1.png',
   REPO_RAW + 'friday-2.png',
@@ -32,8 +58,7 @@ const MONDAY_IMAGES = [
   REPO_RAW + 'monday-2.png',
 ];
 
-// ── message pools (Thai + Korean, no status/error text) ───────────────────────
-
+// ── message pools (Thai + Korean only) ───────────────────────────────────────
 const FRIDAY_TEXTS = [
   '🌸 Happy Friday!\n\nWISDOM INTERNATIONAL CONSULTING\n🌟 Have a wonderful weekend!\n🌟 즐거운 주말 보내세요!',
   '🌺 สุขสันต์วันศุกร์!\n\nWISDOM INTERNATIONAL CONSULTING\n✨ พักผ่อนให้เต็มที่นะคะ\n✨ 행복한 주말 되세요!',
@@ -48,12 +73,9 @@ const MONDAY_TEXTS = [
 ];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-function getGroupIds() {
-    return getAllGroups();
-}
+function getGroupIds() { return getAllGroups(); }
 
 async function pushToGroup(groupId, messages) {
   try {
@@ -80,7 +102,7 @@ async function pushImage(groupId, imageUrl) {
 async function getBangkokWeekendWeather() {
   try {
     const res = await axios.get('https://wttr.in/Bangkok?format=j1', { timeout: 8000 });
-    const w = res.data.weather;
+    const w   = res.data.weather;
     const desc = day => day.hourly[4]?.weatherDesc?.[0]?.value ?? 'Sunny';
     const emo  = d => d.includes('Rain') ? '☔' : d.includes('Cloud') ? '⛅' : '☀️';
     return {
@@ -94,31 +116,30 @@ async function getBangkokWeekendWeather() {
 }
 
 // ── greetings ─────────────────────────────────────────────────────────────────
-
 async function sendFridayGreeting() {
   const groups = getGroupIds();
-  if (!groups.length) { console.log('[Friday] LINE_GROUP_IDS not set.'); return; }
+  if (!groups.length) { console.log('[Friday] No groups.'); return; }
 
   const imageUrl = pick(FRIDAY_IMAGES);
-  let   text     = pick(FRIDAY_TEXTS);
-  const wx       = await getBangkokWeekendWeather();
+  let text = pick(FRIDAY_TEXTS);
+  const wx = await getBangkokWeekendWeather();
 
   if (wx) {
     text += '\n\n📍 Bangkok Weekend\n'
-          + `Sat ${wx.sat.emo} ${wx.sat.desc} ${wx.sat.max}C\n`
-          + `Sun ${wx.sun.emo} ${wx.sun.desc} ${wx.sun.max}C`;
+      + `Sat ${wx.sat.emo} ${wx.sat.desc} ${wx.sat.max}C\n`
+      + `Sun ${wx.sun.emo} ${wx.sun.desc} ${wx.sun.max}C`;
   }
 
   for (const gid of groups) {
     await pushImage(gid, imageUrl);
     await pushToGroup(gid, [{ type: 'text', text }]);
   }
-  console.log('[Friday] Sent image:', imageUrl.split('/').pop(), '| groups:', groups.length);
+  console.log('[Friday] Sent:', imageUrl.split('/').pop(), '| groups:', groups.length);
 }
 
 async function sendMondayGreeting() {
   const groups = getGroupIds();
-  if (!groups.length) { console.log('[Monday] LINE_GROUP_IDS not set.'); return; }
+  if (!groups.length) { console.log('[Monday] No groups.'); return; }
 
   const imageUrl = pick(MONDAY_IMAGES);
   const text     = pick(MONDAY_TEXTS);
@@ -127,11 +148,33 @@ async function sendMondayGreeting() {
     await pushImage(gid, imageUrl);
     await pushToGroup(gid, [{ type: 'text', text }]);
   }
-  console.log('[Monday] Sent image:', imageUrl.split('/').pop(), '| groups:', groups.length);
+  console.log('[Monday] Sent:', imageUrl.split('/').pop(), '| groups:', groups.length);
+}
+
+// ── holiday reminder (17:00 daily) ────────────────────────────────────────────
+async function checkHolidayReminder() {
+  // Tomorrow in Bangkok time (UTC+7)
+  const tomorrowBkk = new Date(Date.now() + 7 * 3_600_000 + 24 * 3_600_000);
+  const yyyy = tomorrowBkk.getUTCFullYear();
+  const mm   = String(tomorrowBkk.getUTCMonth() + 1).padStart(2, '0');
+  const dd   = String(tomorrowBkk.getUTCDate()).padStart(2, '0');
+  const tomorrowStr = `${yyyy}-${mm}-${dd}`;
+
+  const holidayName = THAI_HOLIDAYS[tomorrowStr];
+  if (!holidayName) {
+    console.log(`[Holiday] No holiday tomorrow (${tomorrowStr}) — skip.`);
+    return;
+  }
+
+  const groups = getGroupIds();
+  console.log(`[Holiday] ${holidayName} (${tomorrowStr}) -> ${groups.length} group(s)`);
+  if (!groups.length) return;
+
+  const text = `พรุ่งนี้วันหยุด — ${holidayName}\nขอให้ทุกคนพักผ่อนอย่างมีความสุขนะคะ!\n내일은 휴일입니다 — ${holidayName}\n즐겁게 쉬세요!`;
+  for (const gid of groups) await pushToGroup(gid, [{ type: 'text', text }]);
 }
 
 // ── hourly pipeline ───────────────────────────────────────────────────────────
-
 async function runPipeline() {
   console.log('[Cron] Pipeline at', getBangkokTime(), '(Bangkok)');
   if (!isBusinessHours()) { console.log('[Cron] Outside hours — skip.'); return; }
@@ -139,17 +182,26 @@ async function runPipeline() {
   if (!messages.length) { console.log('[Cron] No messages.'); return; }
   const summaryText = await summarizeMessages(messages, 'pipeline');
   if (!summaryText || summaryText.length < 5) { console.log('[Cron] No summary.'); return; }
-  const ids = await createTasksInLark([{ summary: 'LINE Summary ' + getBangkokTime(), description: summaryText, priority: 'Medium', client_name: 'Wisdom International' }]);
+  const ids = await createTasksInLark([{
+    summary:     'LINE Summary ' + getBangkokTime(),
+    description: summaryText,
+    priority:    'Medium',
+    client_name: 'Wisdom International',
+  }]);
   console.log('[Cron] Created', ids.length, 'Lark task(s):', ids);
 }
 
 // ── scheduler ─────────────────────────────────────────────────────────────────
-
 function startCronJob() {
-  cron.schedule('0 * * * *',    runPipeline,         { timezone: 'Asia/Bangkok' });
-  cron.schedule('0 9 * * 1',    sendMondayGreeting,  { timezone: 'Asia/Bangkok' });
-  cron.schedule('50 17 * * 5',  sendFridayGreeting,  { timezone: 'Asia/Bangkok' });
-  console.log('[Cron] Scheduled: hourly | Mon 09:00 | Fri 17:50 (Asia/Bangkok)');
+  // Hourly pipeline (top of every hour)
+  cron.schedule('0 * * * *',   runPipeline,          { timezone: 'Asia/Bangkok' });
+  // Monday 09:00 greeting
+  cron.schedule('0 9 * * 1',   sendMondayGreeting,   { timezone: 'Asia/Bangkok' });
+  // Friday 17:50 greeting + weather
+  cron.schedule('50 17 * * 5', sendFridayGreeting,   { timezone: 'Asia/Bangkok' });
+  // Daily 17:00 holiday check (day before)
+  cron.schedule('0 17 * * *',  checkHolidayReminder, { timezone: 'Asia/Bangkok' });
+  console.log('[Cron] Scheduled: hourly | Mon 09:00 | Fri 17:50 | daily 17:00 holiday (Asia/Bangkok)');
 }
 
 module.exports = { startCronJob, runPipeline };
