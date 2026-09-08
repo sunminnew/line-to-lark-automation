@@ -245,6 +245,13 @@ app.get('/setup-webhook', async (_req, res) => {
   }
 });
 
+// LINE channel token diagnostic
+app.get('/check-line', async (_req, res) => {
+  const { checkBotInfo } = require('./lineHandler');
+  const info = await checkBotInfo();
+  res.json(info);
+});
+
 // Global crash guards — prevent uncaught exceptions/rejections from killing the process
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught exception:', err.message ?? err);
