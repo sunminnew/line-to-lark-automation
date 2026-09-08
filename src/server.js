@@ -1,22 +1,22 @@
 /**
- * server.js
- * Entry point. Bootstraps the Express webhook server, hourly cron job,
- * and the keep-alive pinger (free Render plan -- prevents sleep).
- *
- * Features:
- *   - Thai<->Korean<->English translation 24/7 for every group message
- *   - Business hours 09:00-18:00 BKK: buffer messages for hourly Lark tasks
- *   - Outside hours: OOO reply appended after translation
- *   - Image messages: read payment slip with Gemini Vision -> record in PEAK Account
- *   - /status endpoint: real-time monitoring dashboard feed
- */
+* server.js
+* Entry point. Bootstraps the Express webhook server, hourly cron job,
+* and the keep-alive pinger (free Render plan -- prevents sleep).
+*
+* Features:
+* - Thai<->Korean<->English translation 24/7 for every group message
+* - Business hours 09:00-18:00 BKK: buffer messages for hourly Lark tasks
+* - Outside hours: OOO reply appended after translation
+* - Image messages: read payment slip with Gemini Vision -> record in PEAK Account
+* - /status endpoint: real-time monitoring dashboard feed
+*/
 
 require('dotenv').config();
 
 const express = require('express');
-const axios   = require('axios');
+const axios = require('axios');
 const { isBusinessHours, getBangkokTime } = require('./timeRouter');
-const { addMessage }   = require('./messageStore');
+const { addMessage } = require('./messageStore');
 const {
   verifySignature,
   translateAll,
@@ -25,22 +25,22 @@ const {
   OOO_MESSAGE,
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
-const { startKeepAlive }            = require('./keepAlive');
-const { addGroup }                       = require('./groupStore');
-const { readSlip }                  = require('./slipReader');
-const { processSlipPayment }        = require('./peakHandler');
+const { startKeepAlive } = require('./keepAlive');
+const { addGroup } = require('./groupStore');
+const { readSlip } = require('./slipReader');
+const { processSlipPayment } = require('./peakHandler');
 
-const app  = express();
+const app = express();
 const PORT = process.env.PORT ?? 3000;
 
 // -- In-memory stats ----------------------------------------------------------
 const stats = {
   startTime: Date.now(),
   translate: { thKr: 0, toTh: 0, fail: 0, lastAt: null },
-  slips:     { detected: 0, valid: 0, paid: 0, lastAt: null },
-  ooo:       0,
-  events:    [],   // raw ms timestamps, last 60 min (for minutely chart)
-  recent:    [],   // last 30 events for activity feed
+  slips: { detected: 0, valid: 0, paid: 0, lastAt: null },
+  ooo: 0,
+  events: [], // raw ms timestamps, last 60 min (for minutely chart)
+  recent: [], // last 30 events for activity feed
 };
 
 function recordEvent(type, preview) {
@@ -135,13 +135,13 @@ app.post('/webhook', async (req, res) => {
 
   for (const event of events) {
     if (event.source?.groupId) addGroup(event.source.groupId);
-        if (event.source?.roomId)  addGroup(event.source.roomId);
-        if (event.type !== 'message') continue;
+    if (event.source?.roomId) addGroup(event.source.roomId);
+    if (event.type !== 'message') continue;
 
     // Image: payment slip
     if (event.message?.type === 'image') {
       if (event.source?.type === 'user') continue;
-      const groupId   = event.source?.groupId ?? event.source?.roomId;
+      const groupId = event.source?.groupId ?? event.source?.roomId;
       const messageId = event.message.id;
       console.log(`[Slip] Image in ${event.source?.type} ${(groupId ?? '').slice(0, 10)}`);
       stats.slips.detected++;
@@ -173,44 +173,48 @@ app.post('/webhook', async (req, res) => {
     if (event.source?.type === 'user') continue;
 
     const replyToken = event.replyToken;
-    const msgText    = event.message.text?.trim();
-    const timestamp  = new Date(event.timestamp).toISOString();
+    const msgText = event.message.text?.trim();
+    const timestamp = new Date(event.timestamp).toISOString();
 
     if (!msgText) continue;
 
     // Translate (bidirectional: TH->KR, KR->TH, EN->TH)
-    const result     = await translateAll(msgText);
-    const inBizHours = isBusinessHours();
+    try {
+      const result = await translateAll(msgText);
+      const inBizHours = isBusinessHours();
 
-    const replies = [];
-    if (result?.kr) {
-      replies.push({ type: 'text', text: 'KR: ' + result.kr });
-      stats.translate.thKr++;
-      stats.translate.lastAt = Date.now();
-      recordEvent('th_kr', msgText.slice(0, 40));
-      console.log('[Translate] TH->KR: "' + msgText.slice(0, 30) + '"');
-    } else if (result?.th) {
-      replies.push({ type: 'text', text: result.th });
-      stats.translate.toTh++;
-      stats.translate.lastAt = Date.now();
-      recordEvent('to_th', msgText.slice(0, 40));
-      console.log('[Translate] ->TH: "' + msgText.slice(0, 30) + '"');
-    } else {
-      stats.translate.fail++;
-      recordEvent('no_trans', msgText.slice(0, 30));
-    }
-    if (!inBizHours) {
-      replies.push({ type: 'text', text: OOO_MESSAGE });
-      stats.ooo++;
-    }
-    if (replies.length > 0) {
-      await replyMessages(replyToken, replies);
-    }
+      const replies = [];
+      if (result?.kr) {
+        replies.push({ type: 'text', text: 'KR: ' + result.kr });
+        stats.translate.thKr++;
+        stats.translate.lastAt = Date.now();
+        recordEvent('th_kr', msgText.slice(0, 40));
+        console.log('[Translate] TH->KR: "' + msgText.slice(0, 30) + '"');
+      } else if (result?.th) {
+        replies.push({ type: 'text', text: result.th });
+        stats.translate.toTh++;
+        stats.translate.lastAt = Date.now();
+        recordEvent('to_th', msgText.slice(0, 40));
+        console.log('[Translate] ->TH: "' + msgText.slice(0, 30) + '"');
+      } else {
+        stats.translate.fail++;
+        recordEvent('no_trans', msgText.slice(0, 30));
+      }
+      if (!inBizHours) {
+        replies.push({ type: 'text', text: OOO_MESSAGE });
+        stats.ooo++;
+      }
+      if (replies.length > 0) {
+        await replyMessages(replyToken, replies);
+      }
 
-    if (inBizHours) {
-      const senderName = await getSenderName(event);
-      addMessage({ timestamp, senderName, text: msgText });
-      console.log('[Webhook] Buffered from ' + senderName + ': "' + msgText.slice(0, 40) + '"');
+      if (inBizHours) {
+        const senderName = await getSenderName(event);
+        addMessage({ timestamp, senderName, text: msgText });
+        console.log('[Webhook] Buffered from ' + senderName + ': "' + msgText.slice(0, 40) + '"');
+      }
+    } catch (err) {
+      console.error('[Webhook] Translation error (silent fail):', err.message);
     }
   }
 });
@@ -230,10 +234,19 @@ app.get('/setup-webhook', async (_req, res) => {
   }
 });
 
+// Global crash guards — prevent uncaught exceptions/rejections from killing the process
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err.message ?? err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection:', reason?.message ?? reason);
+});
+
 app.listen(PORT, () => {
   console.log('\n Server running on port ' + PORT);
-  console.log('   Bangkok time : ' + getBangkokTime());
-  console.log('   Business hrs : ' + (isBusinessHours() ? 'YES' : 'NO'));
+  console.log(' Bangkok time : ' + getBangkokTime());
+  console.log(' Business hrs : ' + (isBusinessHours() ? 'YES' : 'NO'));
   startCronJob();
   startKeepAlive();
 });
+Page_UpPage_UpPage_Up
