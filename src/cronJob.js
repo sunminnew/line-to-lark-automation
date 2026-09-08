@@ -137,9 +137,9 @@ async function runPipeline() {
   if (!isBusinessHours()) { console.log('[Cron] Outside hours — skip.'); return; }
   const messages = flushMessages();
   if (!messages.length) { console.log('[Cron] No messages.'); return; }
-  const tasks = await summarizeMessages(messages);
-  if (!tasks.length) { console.log('[Cron] No actionable tasks.'); return; }
-  const ids = await createTasksInLark(tasks);
+  const summaryText = await summarizeMessages(messages, 'pipeline');
+  if (!summaryText || summaryText.length < 5) { console.log('[Cron] No summary.'); return; }
+  const ids = await createTasksInLark([{ summary: 'LINE Summary ' + getBangkokTime(), description: summaryText, priority: 'Medium', client_name: 'Wisdom International' }]);
   console.log('[Cron] Created', ids.length, 'Lark task(s):', ids);
 }
 
