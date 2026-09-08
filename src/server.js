@@ -134,7 +134,7 @@ app.post('/webhook', async (req, res) => {
   const events = req.body.events ?? [];
 
   for (const event of events) {
-    // Register group automatically    if (event.source?.groupId) addGroup(event.source.groupId);
+    if (event.source?.groupId) addGroup(event.source.groupId);
         if (event.source?.roomId)  addGroup(event.source.roomId);
         if (event.type !== 'message') continue;
 
