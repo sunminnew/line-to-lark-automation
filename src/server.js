@@ -113,7 +113,7 @@ async function pushText(to, text) {
       { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
     );
   } catch (err) {
-    console.error('[Push] Failed:', err.response?.status ?? err.message);
+    console.error('[Push] Failed:', err.response?.status ?? '?', JSON.stringify(err.response?.data ?? err.message));
   }
 }
 
@@ -177,6 +177,8 @@ app.post('/webhook', async (req, res) => {
     const timestamp = new Date(event.timestamp).toISOString();
 
     if (!msgText) continue;
+
+    console.log('[Webhook] src=' + (event.source?.type ?? '?') + ' tok_len=' + (event.replyToken?.length ?? 0) + ' gid=' + (event.source?.groupId ?? event.source?.roomId ?? 'none').slice(0, 10));
 
     // Translate (bidirectional: TH->KR, KR->TH, EN->TH)
     try {
