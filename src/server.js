@@ -178,7 +178,7 @@ app.post('/webhook', async (req, res) => {
 
     if (!msgText) continue;
 
-    console.log('[Webhook] src=' + (event.source?.type ?? '?') + ' tok_len=' + (event.replyToken?.length ?? 0) + ' gid=' + (event.source?.groupId ?? event.source?.roomId ?? 'none').slice(0, 10));
+    console.log('[Webhook] src=' + JSON.stringify(event.source) + ' redeliver=' + (event.deliveryContext?.isRedelivery ?? '?') + ' tok=' + (event.replyToken ?? 'null') + ' gid=' + (event.source?.groupId ?? event.source?.roomId ?? 'none'));
 
     // Translate (bidirectional: TH->KR, KR->TH, EN->TH)
     try {
