@@ -156,7 +156,7 @@ async function translateAll(text) {
 // ── LINE API helpers ───────────────────────────────────────────────────────────
 async function replyMessages(replyToken, messages) {
   var isDummy = !replyToken || /^0+$/.test(replyToken);
-  console.log('[LINE] tok:', replyToken ? replyToken.slice(0, 15) : 'NULL', 'len:', replyToken ? replyToken.length : 0, isDummy ? 'DUMMY' : 'ok');
+  console.log('[LINE] tok:', replyToken ?? 'NULL', 'len:', replyToken?.length ?? 0, isDummy ? 'DUMMY' : 'ok');
   if (isDummy) throw new Error('dummy reply token');
   try {
     await axios.post(
@@ -166,7 +166,7 @@ async function replyMessages(replyToken, messages) {
     );
     console.log('[LINE] Reply ok');
   } catch (err) {
-    console.error('[LINE] Reply failed (HTTP', err.response ? err.response.status : '?', '):', err.response ? err.response.data : err.message);
+    console.error('[LINE] Reply failed (HTTP', err.response?.status ?? '?', '):', JSON.stringify(err.response?.data ?? err.message));
     throw err; // re-throw so push fallback fires
   }
 }
