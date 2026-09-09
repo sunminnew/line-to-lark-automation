@@ -158,7 +158,7 @@ app.post('/webhook', async (req, res) => {
           stats.slips.lastAt = Date.now();
           const amt = formatBaht(peak.amount);
           recordEvent('slip_paid', amt);
-          const msg = `ได้รับการชำระเงิน ${amt} แล้วค่ะ ขอบคุณนะค่ะ!\n입금 확인되었습니다 ${amt} 감사합니다!`;
+          const msg = `ได้รับการชำระเงิน ${amt} แล้วค่ะ ขอบคุณนะคะ!\n입금 확인되었습니다 ${amt} 감사합니다!`;
           if (groupId) await pushText(groupId, msg);
         } catch (err) {
           console.error('[Slip] Error:', err.message);
