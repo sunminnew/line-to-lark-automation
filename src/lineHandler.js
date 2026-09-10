@@ -119,10 +119,16 @@ async function groqTranslate(text, systemPrompt) {
 }
 
 // ── translateAll — returns { kr, th } ─────────────────────────────────────────
+// ── translateAll — returns { kr, th } ─────────────────────────────────────────────
 async function translateAll(text) {
-  // Thai → Korean
-  if (THAI_REGEX.test(text)) {
-    console.log('[TR] th detected → kr');
+  // Count characters per language to detect dominant language
+  // (avoids mis-detecting mixed messages like "อ้าง + Korean" as Thai-dominant)
+  var thaiCount   = (text.match(/[฀-๿]/g) || []).length;
+  var koreanCount = (text.match(/[가-힯ᄀ-ᇿ㄰-㆏]/g) || []).length;
+
+  // Thai dominant → translate to Korean
+  if (thaiCount > 0 && thaiCount >= koreanCount) {
+    console.log('[TR] th dominant (' + thaiCount + ') → kr');
     var krPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this Thai text to Korean. Output ONLY Korean Hangul. For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation.';
     var raw = await geminiTranslate(text, 'ko', 'th') || await groqTranslate(text, krPrompt);
     if (!raw) return null;
@@ -130,9 +136,10 @@ async function translateAll(text) {
     if (!kr) return null;
     return { kr: kr, th: null };
   }
-  // Korean → Thai
-  if (KOREAN_REGEX.test(text)) {
-    console.log('[TR] kr detected → th');
+
+  // Korean dominant → translate to Thai
+  if (koreanCount > 0 && koreanCount > thaiCount) {
+    console.log('[TR] kr dominant (' + koreanCount + ') → th');
     var thPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this Korean text to Thai. Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation.';
     var raw = await geminiTranslate(text, 'th', 'ko') || await groqTranslate(text, thPrompt);
     if (!raw) return null;
@@ -140,7 +147,8 @@ async function translateAll(text) {
     if (!th) return null;
     return { kr: null, th: th };
   }
-  // English → Thai
+
+  // English only → translate to Thai
   if (ENGLISH_REGEX.test(text)) {
     console.log('[TR] en detected → th');
     var enPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this English text to Thai. Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No romanization, no explanation.';
@@ -150,6 +158,7 @@ async function translateAll(text) {
     if (!th) return null;
     return { kr: null, th: th };
   }
+
   return null;
 }
 
