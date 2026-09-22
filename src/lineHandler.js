@@ -14,7 +14,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 function getToken() { return process.env.LINE_CHANNEL_ACCESS_TOKEN; }
 const getAccessToken = getToken;
 
-// Auto-issue a channel access token via LINE OAuth v2.0 at startup.
+// Auto-issue a channel access token via LINE OAuth v2.0 at startup.h
 // Requires LINE_CHANNEL_ID and LINE_CHANNEL_SECRET env vars.
 // Sets process.env.LINE_CHANNEL_ACCESS_TOKEN so getToken() picks it up.
 async function initAccessToken() {
@@ -35,7 +35,7 @@ async function initAccessToken() {
     const expiresIn = res.data.expires_in != null ? res.data.expires_in : 2592000;
     console.log('[LINE] OAuth token issued for channel ' + channelId + ' (expires in ' + expiresIn + 's)');
     // Schedule refresh 10 min before expiry (minimum 5 min)
-    const refreshMs = Math.max((expiresIn - 600) * 1000, 300000);
+    const refreshMs = Math.min(Math.max((expiresIn - 600) * 1000, 300000), 86400000); // cap at 24h (32-bit int safe)
     setTimeout(initAccessToken, refreshMs);
   } catch (err) {
     console.error('[LINE] OAuth token init failed:', err.response ? JSON.stringify(err.response.data) : err.message);
