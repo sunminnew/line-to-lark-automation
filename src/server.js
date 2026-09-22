@@ -24,7 +24,6 @@ const {
   getSenderName,
   initAccessToken,
   getAccessToken,
-  OOO_MESSAGE,
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive } = require('./keepAlive');
@@ -207,10 +206,6 @@ app.post('/webhook', async (req, res) => {
       } else {
         stats.translate.fail++;
         recordEvent('no_trans', msgText.slice(0, 30));
-      }
-      if (!inBizHours) {
-        replies.push({ type: 'text', text: OOO_MESSAGE });
-        stats.ooo++;
       }
       const groupId = event.source?.groupId ?? event.source?.roomId;
       if (replies.length > 0) {
