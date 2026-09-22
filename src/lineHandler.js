@@ -12,6 +12,36 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Read token dynamically so server.js can refresh it at runtime
 function getToken() { return process.env.LINE_CHANNEL_ACCESS_TOKEN; }
+const getAccessToken = getToken;
+
+// Auto-issue a channel access token via LINE OAuth v2.1 at startup.
+// Requires LINE_CHANNEL_ID and LINE_CHANNEL_SECRET env vars.
+// Sets process.env.LINE_CHANNEL_ACCESS_TOKEN so getToken() picks it up.
+async function initAccessToken() {
+  const channelId     = process.env.LINE_CHANNEL_ID;
+  const channelSecret = process.env.LINE_CHANNEL_SECRET;
+  if (!channelId || !channelSecret) {
+    console.log('[LINE] LINE_CHANNEL_ID or LINE_CHANNEL_SECRET missing — using env LINE_CHANNEL_ACCESS_TOKEN');
+    return;
+  }
+  try {
+    const body = 'grant_type=client_credentials' +
+                 '&client_id=' + encodeURIComponent(channelId) +
+                 '&client_secret=' + encodeURIComponent(channelSecret);
+    const res = await axios.post('https://api.line.me/oauth/v2.1/token', body, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = res.data.access_token;
+    const expiresIn = res.data.expires_in != null ? res.data.expires_in : 2592000;
+    console.log('[LINE] OAuth token issued for channel ' + channelId + ' (expires in ' + expiresIn + 's)');
+    // Schedule refresh 10 min before expiry (minimum 5 min)
+    const refreshMs = Math.max((expiresIn - 600) * 1000, 300000);
+    setTimeout(initAccessToken, refreshMs);
+  } catch (err) {
+    console.error('[LINE] OAuth token init failed:', err.response ? err.response.data : err.message);
+    console.log('[LINE] Falling back to LINE_CHANNEL_ACCESS_TOKEN env var');
+  }
+}
 
 // Groq model fallback chain — first working model wins (2026 active models)
 const GROQ_MODELS = [
@@ -215,4 +245,6 @@ module.exports = {
   checkBotInfo,
   getSenderName,
   OOO_MESSAGE,
+  initAccessToken,
+  getAccessToken,
 };
