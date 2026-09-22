@@ -22,6 +22,8 @@ const {
   translateAll,
   replyMessages,
   getSenderName,
+  initAccessToken,
+  getAccessToken,
   OOO_MESSAGE,
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
@@ -110,7 +112,7 @@ async function pushText(to, text) {
     await axios.post(
       'https://api.line.me/v2/bot/message/push',
       { to, messages: [{ type: 'text', text }] },
-      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAccessToken()}` } }
     );
   } catch (err) {
     console.error('[Push] Failed:', err.response?.status ?? '?', JSON.stringify(err.response?.data ?? err.message));
@@ -241,7 +243,7 @@ app.get('/setup-webhook', async (_req, res) => {
     const r = await axios.put(
       'https://api.line.me/v2/bot/channel/webhook/endpoint',
       { webhookEndpointUrl: webhookUrl },
-      { headers: { Authorization: 'Bearer ' + process.env.LINE_CHANNEL_ACCESS_TOKEN } }
+      { headers: { Authorization: 'Bearer ' + getAccessToken() } }
     );
     res.json({ set: webhookUrl, lineResponse: r.data });
   } catch (err) {
@@ -268,6 +270,7 @@ app.listen(PORT, () => {
   console.log('\n Server running on port ' + PORT);
   console.log(' Bangkok time : ' + getBangkokTime());
   console.log(' Business hrs : ' + (isBusinessHours() ? 'YES' : 'NO'));
+  initAccessToken();
   startCronJob();
   startKeepAlive();
 });
