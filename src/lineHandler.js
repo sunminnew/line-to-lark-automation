@@ -52,13 +52,10 @@ const GROQ_MODELS = [
   'openai/gpt-oss-20b',
 ];
 
-const OOO_MESSAGE =
-  'สวัสดีค่า/ครับ ขณะนี้อยู่นอกเวลาทำการ (09.00-18.00 น.) ' +
-  'ทางทีมงานได้รับข้อความของท่านแล้ว และจะรีบติดต่อกลับทันทีในเวลาทำการ ' +
-  'ขอบพระคุณที่ไว้วางใจค่า/ครับ';
+const OOO_MESSAGE = '';
 
 const THAI_REGEX    = /[฀-๿]/;
-const KOREAN_REGEX  = /[가-힯ᄀ-ᇿ㄰-㆏]/;
+const KOREAN_REGEX  = /[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/;
 const ENGLISH_REGEX = /[a-zA-Z]/;
 
 function verifySignature(rawBody, signature) {
@@ -156,7 +153,7 @@ async function groqTranslate(text, systemPrompt) {
 async function translateAll(text) {
   // Count characters per language to detect dominant language
   var thaiCount   = (text.match(/[฀-๿]/g) || []).length;
-  var koreanCount = (text.match(/[가-힯ᄀ-ᇿ㄰-㆏]/g) || []).length;
+  var koreanCount = (text.match(/[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/g) || []).length;
 
   // Thai dominant → translate to Korean
   if (thaiCount > 0 && thaiCount >= koreanCount) {
