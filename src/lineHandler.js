@@ -14,7 +14,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 function getToken() { return process.env.LINE_CHANNEL_ACCESS_TOKEN; }
 const getAccessToken = getToken;
 
-// Auto-issue a channel access token via LINE OAuth v2.1 at startup.
+// Auto-issue a channel access token via LINE OAuth v2.0 at startup.
 // Requires LINE_CHANNEL_ID and LINE_CHANNEL_SECRET env vars.
 // Sets process.env.LINE_CHANNEL_ACCESS_TOKEN so getToken() picks it up.
 async function initAccessToken() {
@@ -28,7 +28,7 @@ async function initAccessToken() {
     const body = 'grant_type=client_credentials' +
                  '&client_id=' + encodeURIComponent(channelId) +
                  '&client_secret=' + encodeURIComponent(channelSecret);
-    const res = await axios.post('https://api.line.me/oauth/v2.1/token', body, {
+    const res = await axios.post('https://api.line.me/v2/oauth/accessToken', body, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     process.env.LINE_CHANNEL_ACCESS_TOKEN = res.data.access_token;
@@ -38,7 +38,7 @@ async function initAccessToken() {
     const refreshMs = Math.max((expiresIn - 600) * 1000, 300000);
     setTimeout(initAccessToken, refreshMs);
   } catch (err) {
-    console.error('[LINE] OAuth token init failed:', err.response ? err.response.data : err.message);
+    console.error('[LINE] OAuth token init failed:', err.response ? JSON.stringify(err.response.data) : err.message);
     console.log('[LINE] Falling back to LINE_CHANNEL_ACCESS_TOKEN env var');
   }
 }
@@ -149,10 +149,8 @@ async function groqTranslate(text, systemPrompt) {
 }
 
 // ── translateAll — returns { kr, th } ─────────────────────────────────────────
-// ── translateAll — returns { kr, th } ─────────────────────────────────────────────
 async function translateAll(text) {
   // Count characters per language to detect dominant language
-  // (avoids mis-detecting mixed messages like "อ้าง + Korean" as Thai-dominant)
   var thaiCount   = (text.match(/[฀-๿]/g) || []).length;
   var koreanCount = (text.match(/[가-힯ᄀ-ᇿ㄰-㆏]/g) || []).length;
 
