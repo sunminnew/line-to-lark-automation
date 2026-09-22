@@ -131,6 +131,10 @@ app.post('/webhook', async (req, res) => {
 
   res.sendStatus(200);
 
+  // Log destination to identify which LINE channel sent this webhook
+  const destination = req.body.destination;
+  console.log(`[Webhook] dest=${destination ?? "unknown"}`);
+
   const events = req.body.events ?? [];
 
   for (const event of events) {
@@ -180,7 +184,7 @@ app.post('/webhook', async (req, res) => {
 
     console.log('[Webhook] src=' + JSON.stringify(event.source) + ' redeliver=' + (event.deliveryContext?.isRedelivery ?? '?') + ' tok=' + (event.replyToken ?? 'null') + ' gid=' + (event.source?.groupId ?? event.source?.roomId ?? 'none'));
 
-    // Translate (bidirectional: TH->KR, KR->TH, EN->TH)
+    // Translate (bidirectional: TH-->KR, KR->TH, EN->TH)
     try {
       const result = await translateAll(msgText);
       const inBizHours = isBusinessHours();
