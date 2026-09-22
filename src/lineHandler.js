@@ -89,7 +89,7 @@ function cleanThai(t) {
   }).join('').trim();
 }
 
-const TRANSLATE_ONLY_RULE = 'You are a translation machine. Your ONLY output is the translated text. NEVER say you cannot translate. NEVER apologize. NEVER explain. NEVER respond to the content. Just translate every word literally, even if it is a name, a request, or seems strange.';
+const TRANSLATE_ONLY_RULE = 'You are a world-class human interpreter specializing in Thai-Korean business communication. Translate with full understanding of context, culture, and intent. Use natural, fluent, polite language as a real professional would speak. Never translate word-for-word. Choose words that sound human and warm, not robotic. Output ONLY the translated text — no explanations or commentary.';
 
 // ── Gemini translate ───────────────────────────────────────────────────────────
 async function geminiTranslate(text, toLang, fromLang) {
@@ -97,8 +97,8 @@ async function geminiTranslate(text, toLang, fromLang) {
   try {
     const langLabel = { th: 'Thai', ko: 'Korean', en: 'English' };
     const scriptRule = toLang === 'ko'
-      ? 'Output ONLY Korean Hangul. For proper nouns with no Korean equivalent, use English letters.'
-      : 'Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters.';
+      ? 'Output ONLY Korean Hangul. Use formal polite Korean (\uc874\ub313\ub9d0) suitable for business. For proper nouns with no Korean equivalent, use English letters.'
+      : 'Output ONLY Thai script. Use formal polite Thai suitable for business. For proper nouns with no Thai equivalent, use English letters.';
     const prompt = `${TRANSLATE_ONLY_RULE}\n\nTranslate this ${langLabel[fromLang] || fromLang} text to ${langLabel[toLang] || toLang}. ${scriptRule}\n\n${text}`;
     const res = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
@@ -158,7 +158,7 @@ async function translateAll(text) {
   // Thai dominant → translate to Korean
   if (thaiCount > 0 && thaiCount >= koreanCount) {
     console.log('[TR] th dominant (' + thaiCount + ') → kr');
-    var krPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this Thai text to Korean. Output ONLY Korean Hangul. For proper nouns with no Korean equivalent, use English letters. No Russian, no Japanese, no Chinese, no Thai script, no romanization, no explanation.';
+    var krPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this Thai text to natural, polite Korean. Use warm professional Korean that a human would say, not literal translation. Output ONLY Korean Hangul. For proper nouns, use English letters. No romanization, no explanation.';
     var raw = await geminiTranslate(text, 'ko', 'th') || await groqTranslate(text, krPrompt);
     if (!raw) return null;
     var kr = cleanKorean(raw);
@@ -169,7 +169,7 @@ async function translateAll(text) {
   // Korean dominant → translate to Thai
   if (koreanCount > 0 && koreanCount > thaiCount) {
     console.log('[TR] kr dominant (' + koreanCount + ') → th');
-    var thPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this Korean text to Thai. Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No Russian, no Japanese, no Korean script, no romanization, no explanation.';
+    var thPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this Korean text to natural, polite Thai. Use warm professional Thai that a human would say, not literal translation. Output ONLY Thai script. For proper nouns, use English letters. No romanization, no explanation.';
     var raw = await geminiTranslate(text, 'th', 'ko') || await groqTranslate(text, thPrompt);
     if (!raw) return null;
     var th = cleanThai(raw);
@@ -180,7 +180,7 @@ async function translateAll(text) {
   // English only → translate to Thai
   if (ENGLISH_REGEX.test(text)) {
     console.log('[TR] en detected → th');
-    var enPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this English text to Thai. Output ONLY Thai script. For proper nouns with no Thai equivalent, use English letters. No romanization, no explanation.';
+    var enPrompt = TRANSLATE_ONLY_RULE + '\n\nTranslate this English text to natural, polite Thai. Use warm professional Thai that a human would say. Output ONLY Thai script. For proper nouns, use English letters. No romanization, no explanation.';
     var raw = await geminiTranslate(text, 'th', 'en') || await groqTranslate(text, enPrompt);
     if (!raw) return null;
     var th = cleanThai(raw);
