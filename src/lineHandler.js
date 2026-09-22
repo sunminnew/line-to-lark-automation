@@ -31,9 +31,13 @@ async function initAccessToken() {
     const res = await axios.post('https://api.line.me/v2/oauth/accessToken', body, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
-    process.env.LINE_CHANNEL_ACCESS_TOKEN = res.data.access_token;
+    const tok = res.data.access_token || '';
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = tok;
     const expiresIn = res.data.expires_in != null ? res.data.expires_in : 2592000;
-    console.log('[LINE] OAuth token issued for channel ' + channelId + ' (expires in ' + expiresIn + 's)');
+    console.log('[LINE] OAuth token issued for channel ' + channelId + ' (expires in ' + expiresIn + 's) tok_len=' + tok.length + ' tok_prefix=' + tok.substring(0, 12));
+    checkBotInfo().then(function(r) {
+      console.log('[LINE] bot-info check:', r.ok ? 'OK botId=' + (r.data && r.data.userId) : 'FAIL HTTP' + r.status + ' ' + JSON.stringify(r.error));
+    });
     // Schedule refresh 10 min before expiry (minimum 5 min)
     const refreshMs = Math.min(Math.max((expiresIn - 600) * 1000, 300000), 86400000); // cap at 24h (32-bit int safe)
     setTimeout(initAccessToken, refreshMs);
@@ -193,7 +197,8 @@ async function translateAll(text) {
 // ── LINE API helpers ───────────────────────────────────────────────────────────
 async function replyMessages(replyToken, messages) {
   var isDummy = !replyToken || /^0+$/.test(replyToken);
-  console.log('[LINE] tok:', replyToken ?? 'NULL', 'len:', replyToken?.length ?? 0, isDummy ? 'DUMMY' : 'ok');
+  const chanTok = getToken() || '';
+  console.log('[LINE] tok:', replyToken ?? 'NULL', 'len:', replyToken?.length ?? 0, isDummy ? 'DUMMY' : 'ok', '| chan-tok len:', chanTok.length, 'prefix:', chanTok.substring(0, 12));
   if (isDummy) throw new Error('dummy reply token');
   try {
     await axios.post(
