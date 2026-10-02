@@ -74,7 +74,7 @@ function cleanKorean(t) {
            (n >= 0x41   && n <= 0x5A)   ||
            (n >= 0x61   && n <= 0x7A)   ||
            n === 32 || n === 10 || n === 9 ||
-           (n >= 0x30   && n <= 0x39);
+           (n >= 0x30 && n <= 0x39) || n === 0x2D || n === 0x7E;
   }).join('').trim();
 }
 
@@ -85,7 +85,7 @@ function cleanThai(t) {
            (n >= 0x41   && n <= 0x5A)   ||
            (n >= 0x61   && n <= 0x7A)   ||
            n === 32 || n === 10 || n === 9 ||
-           (n >= 0x30   && n <= 0x39);
+           (n >= 0x30 && n <= 0x39) || n === 0x2D || n === 0x7E;
   }).join('').trim();
 }
 
@@ -151,6 +151,8 @@ async function groqTranslate(text, systemPrompt) {
 
 // ── translateAll — returns { kr, th } ─────────────────────────────────────────
 async function translateAll(text) {
+  // Normalize numeric ranges: '7-14' -> '7~14' to prevent AI merging digits
+  text = text.replace(/(\d{1,3})\s*-\s*(\d{1,3})/g, '$1~$2');
   // Count characters per language to detect dominant language
   var thaiCount   = (text.match(/[฀-๿]/g) || []).length;
   var koreanCount = (text.match(/[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/g) || []).length;
