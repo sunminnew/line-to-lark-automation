@@ -65,6 +65,16 @@ function verifySignature(rawBody, signature) {
 }
 
 // ── Output cleaners ────────────────────────────────────────────────────────────
+// Convert Thai DD/MM/YYYY dates to unambiguous "D MonthName YYYY" before AI translation
+function expandThaiDates(text) {
+  var months = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+  return text.replace(/(\d{1,2})\/(\d{1,2})\/(\d{4})/g, function(_, d, m, y) {
+    var mi = parseInt(m, 10);
+    if (mi < 1 || mi > 12) return _;
+    return parseInt(d) + ' ' + months[mi] + ' ' + y;
+  });
+}
+
 function cleanKorean(t) {
   return t.split('').filter(function(c) {
     var n = c.charCodeAt(0);
@@ -153,6 +163,7 @@ async function groqTranslate(text, systemPrompt) {
 async function translateAll(text) {
   // Normalize numeric ranges: '7-14' -> '7~14' to prevent AI merging digits
   text = text.replace(/(\d{1,3})\s*-\s*(\d{1,3})/g, '$1~$2');
+  text = expandThaiDates(text);
   // Count characters per language to detect dominant language
   var thaiCount   = (text.match(/[฀-๿]/g) || []).length;
   var koreanCount = (text.match(/[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/g) || []).length;
