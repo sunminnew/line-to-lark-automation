@@ -35,3 +35,5 @@ services:
         sync: false
       - key: LARK_ASSIGNEE_USER_ID
         sync: false
+      - key: CHECKIN_WEBHOOK_SECRET
+        sync: false

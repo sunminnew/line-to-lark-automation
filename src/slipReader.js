@@ -26,7 +26,7 @@ async function downloadLineImage(messageId) {
 
 /**
  * Send image to Gemini Vision REST API and extract slip fields.
- * Uses gemini-2.0-flash (free tier).
+ * Uses gemini-3.5-flash-lite by default (override with SLIP_GEMINI_MODEL).
  */
 async function readSlip(messageId) {
   let imageBuffer;
@@ -64,7 +64,7 @@ Rules:
 
   let text = '';
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${process.env.SLIP_GEMINI_MODEL || 'gemini-3.5-flash-lite'}:generateContent?key=${process.env.GEMINI_API_KEY}`;
     const res = await axios.post(url, body, { timeout: 20000 });
     text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   } catch (err) {

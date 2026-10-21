@@ -64,7 +64,8 @@ function getAllKnownGroupIds() {
   // Format in Render: KNOWN_GROUP_IDS=Cxxxx,Cxxxx,Cxxxx
   const fromEnv = (process.env.KNOWN_GROUP_IDS || '')
     .split(',').map(s => s.trim()).filter(Boolean);
-  return [...new Set([...fromMemory, ...fromEnv])];
+  const { isExcludedGroup } = require('./groupStore');
+  return [...new Set([...fromMemory, ...fromEnv])].filter(id => !isExcludedGroup(id));
 }
 
 
