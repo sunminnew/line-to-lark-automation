@@ -27,7 +27,8 @@ const {
 } = require('./lineHandler');
 const { startCronJob, runPipeline } = require('./cronJob');
 const { startKeepAlive } = require('./keepAlive');
-const { addGroup } = require('./groupStore');
+const { addGroup, isExcludedGroup } = require('./groupStore');
+const { handleCheckinAlert } = require('./checkinAlert');
 const { readSlip } = require('./slipReader');
 const { processSlipPayment } = require('./peakHandler');
 
@@ -67,6 +68,9 @@ app.get('/', (_req, res) => {
     businessHours: isBusinessHours(),
   });
 });
+
+// AppSheet check-in alert -> HR LINE group only (secret-protected)
+app.post('/checkin-alert', handleCheckinAlert);
 
 // Manual pipeline trigger
 app.post('/trigger', async (_req, res) => {
@@ -139,6 +143,8 @@ app.post('/webhook', async (req, res) => {
   const events = req.body.events ?? [];
 
   for (const event of events) {
+    // HR check-in alert group: no translation, no slip reading, no buffering
+    if (isExcludedGroup(event.source?.groupId ?? event.source?.roomId)) continue;
     if (event.source?.groupId) addGroup(event.source.groupId);
     if (event.source?.roomId) addGroup(event.source.roomId);
     if (event.type !== 'message') continue;
