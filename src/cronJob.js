@@ -154,12 +154,22 @@ async function sendHolidayReminder() {
 
 function startCronJob() {
   cron.schedule('0 * * * *',    runPipeline,         { timezone: 'Asia/Bangkok' });
-  cron.schedule('55 8 * * 1-5', sendDailyMorning,   { timezone: 'Asia/Bangkok' });
-  cron.schedule('50 17 * * 1-5',sendDailyEvening,   { timezone: 'Asia/Bangkok' });
-  cron.schedule('0 9 * * 1',    sendMondayGreeting,  { timezone: 'Asia/Bangkok' });
-  cron.schedule('0 18 * * 5',   sendFridayGreeting,  { timezone: 'Asia/Bangkok' });
-  cron.schedule('50 17 * * *',  sendHolidayReminder, { timezone: 'Asia/Bangkok' });
-  console.log('[Cron] 6 jobs scheduled (Asia/Bangkok): hourly pipeline | 08:55 Mon-Fri morning | 17:50 Mon-Fri evening | Mon 09:00 greeting | Fri 18:00 farewell | daily 17:50 holiday check.');
+  // Daily morning/evening greetings are OFF by default: they use LINE Push quota
+  // (shared with the HR check-in alert). Set DAILY_GREETINGS=on to re-enable.
+  const dailyGreetings = String(process.env.DAILY_GREETINGS || '').toLowerCase() === 'on';
+  if (dailyGreetings) {
+    cron.schedule('55 8 * * 1-5', sendDailyMorning,   { timezone: 'Asia/Bangkok' });
+    cron.schedule('50 17 * * 1-5',sendDailyEvening,   { timezone: 'Asia/Bangkok' });
+  }
+  // Monday/Friday greetings and the holiday reminder also use Push quota: OFF by default.
+  // Set SCHEDULED_BROADCASTS=on to re-enable them.
+  const broadcasts = String(process.env.SCHEDULED_BROADCASTS || '').toLowerCase() === 'on';
+  if (broadcasts) {
+    cron.schedule('0 9 * * 1',    sendMondayGreeting,  { timezone: 'Asia/Bangkok' });
+    cron.schedule('0 18 * * 5',   sendFridayGreeting,  { timezone: 'Asia/Bangkok' });
+    cron.schedule('50 17 * * *',  sendHolidayReminder, { timezone: 'Asia/Bangkok' });
+  }
+  console.log('[Cron] jobs scheduled (Asia/Bangkok): hourly pipeline | daily morning/evening greetings ' + (dailyGreetings ? 'ON' : 'OFF') + ' | Mon/Fri greetings + holiday reminder ' + (broadcasts ? 'ON' : 'OFF') + '');
 }
 
 module.exports = { startCronJob, runPipeline };
