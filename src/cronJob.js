@@ -161,10 +161,15 @@ function startCronJob() {
     cron.schedule('55 8 * * 1-5', sendDailyMorning,   { timezone: 'Asia/Bangkok' });
     cron.schedule('50 17 * * 1-5',sendDailyEvening,   { timezone: 'Asia/Bangkok' });
   }
-  cron.schedule('0 9 * * 1',    sendMondayGreeting,  { timezone: 'Asia/Bangkok' });
-  cron.schedule('0 18 * * 5',   sendFridayGreeting,  { timezone: 'Asia/Bangkok' });
-  cron.schedule('50 17 * * *',  sendHolidayReminder, { timezone: 'Asia/Bangkok' });
-  console.log('[Cron] jobs scheduled (Asia/Bangkok): hourly pipeline | daily morning/evening greetings ' + (dailyGreetings ? 'ON' : 'OFF') + ' | Mon 09:00 greeting | Fri 18:00 farewell | daily 17:50 holiday check.');
+  // Monday/Friday greetings and the holiday reminder also use Push quota: OFF by default.
+  // Set SCHEDULED_BROADCASTS=on to re-enable them.
+  const broadcasts = String(process.env.SCHEDULED_BROADCASTS || '').toLowerCase() === 'on';
+  if (broadcasts) {
+    cron.schedule('0 9 * * 1',    sendMondayGreeting,  { timezone: 'Asia/Bangkok' });
+    cron.schedule('0 18 * * 5',   sendFridayGreeting,  { timezone: 'Asia/Bangkok' });
+    cron.schedule('50 17 * * *',  sendHolidayReminder, { timezone: 'Asia/Bangkok' });
+  }
+  console.log('[Cron] jobs scheduled (Asia/Bangkok): hourly pipeline | daily morning/evening greetings ' + (dailyGreetings ? 'ON' : 'OFF') + ' | Mon/Fri greetings + holiday reminder ' + (broadcasts ? 'ON' : 'OFF') + '');
 }
 
 module.exports = { startCronJob, runPipeline };
