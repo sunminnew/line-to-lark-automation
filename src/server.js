@@ -259,6 +259,33 @@ app.get('/check-line', async (_req, res) => {
   res.json(info);
 });
 
+// Groups debug endpoint -- list all group IDs the bot has seen (protected)
+app.get('/groups', (req, res) => {
+  if (req.headers['x-line-secret'] !== process.env.LINE_CHANNEL_SECRET) {
+    return res.status(403).json({ error: 'Forbidden -- pass x-line-secret header' });
+  }
+  const groups = getAllGroups();
+  res.json({ count: groups.length, groups });
+});
+
+// Force bot to leave a specific group so it can be re-invited cleanly (protected)
+app.post('/leave/:groupId', async (req, res) => {
+  if (req.headers['x-line-secret'] !== process.env.LINE_CHANNEL_SECRET) {
+    return res.status(403).json({ error: 'Forbidden -- pass x-line-secret header' });
+  }
+  const { groupId } = req.params;
+  try {
+    await axios.post(
+      `https://api.line.me/v2/bot/group/${groupId}/leave`,
+      {},
+      { headers: { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` } }
+    );
+    res.json({ ok: true, left: groupId });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data ?? err.message });
+  }
+});
+
 // Global crash guards — prevent uncaught exceptions/rejections from killing the process
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught exception:', err.message ?? err);
